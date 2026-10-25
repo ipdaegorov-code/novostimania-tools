@@ -122,6 +122,32 @@ def kb(img, t, a, b, z0, z1, c0=(.5, .5), c1=(.5, .5)):
     x = clamp(cx * img.width - cw / 2, 0, img.width - cw); y = clamp(cy * img.height - ch / 2, 0, img.height - ch)
     return img.resize((W, H), Image.BILINEAR, box=(x, y, x + cw, y + ch))
 
+class VideoSrc:
+    """Кадры видеоролика для сцены: обрезка под 9:16, 30 fps, по кругу; читается последовательно."""
+    def __init__(self, path, start=0.0, focus=(.5, .5)):
+        self.path, self.start, self.focus = path, float(start), focus
+        self.proc, self.idx = None, -1
+    def _open(self, t0):
+        if self.proc:
+            self.proc.kill(); self.proc = None
+        fx, fy = self.focus
+        vf = f"fps={FPS},scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}:(iw-{W})*{fx}:(ih-{H})*{fy},format=rgb24"
+        self.proc = subprocess.Popen([ff_bin(), "-loglevel", "error", "-stream_loop", "-1", "-ss", f"{self.start + t0:.3f}", "-i", self.path,
+                                      "-vf", vf, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        self.idx = int(round(t0 * FPS)) - 1; self.last = None
+    def frame(self, t):
+        k = int(round(max(0.0, t) * FPS))
+        if self.proc is None or k < self.idx or k > self.idx + 90: self._open(k / FPS)
+        while self.idx < k:
+            buf = self.proc.stdout.read(W * H * 3)
+            if len(buf) < W * H * 3: break
+            self.last = buf; self.idx += 1
+        if self.last is None: return Image.new("RGB", (W, H), (8, 14, 34))
+        return Image.frombytes("RGB", (W, H), self.last)
+def ff_bin():
+    import shutil
+    return shutil.which("ffmpeg") or "ffmpeg"
+
 _cache = {}
 def once(key, fn):
     if key not in _cache: _cache[key] = fn()
@@ -255,8 +281,16 @@ class Clip:
     # ---------------- сцены ----------------
     def bg(self, i, t, blur=0, dim=1.0, z=(1.0, 1.25)):
         a, b = self.bounds(i); s = self.sc[i]
-        img = self.imgs.get(i)
-        if img is None:
+        img = self.imgs.get(i); vs = getattr(self, "vids", {}).get(i)
+        zz = z if s.get("zoom") != "out" else (z[1], z[0]); p_ = ease_io(prog(t, a, max(.01, b + .5 - a)))
+        self._zrel = (zz[0] + (zz[1] - zz[0]) * p_) / zz[0]
+        if vs is not None:
+            fr = vs.frame(t - a)
+            zf = 1 + (zz[0] + (zz[1] - zz[0]) * p_ - 1) * .35  # лёгкий наезд и на видео
+            z0f = 1 + (zz[0] - 1) * .35; self._zrel = zf / z0f
+            if zf > 1.001:
+                cw, ch = W / zf, H / zf; fr = fr.resize((W, H), Image.BILINEAR, box=((W - cw) / 2, (H - ch) / 2, (W + cw) / 2, (H + ch) / 2))
+        elif img is None:
             fr = Image.new("RGB", (W, H), (8, 14, 34))
         else:
             fc = tuple(s.get("focus", (.5, .5)))
@@ -265,8 +299,34 @@ class Clip:
         if blur: fr = fr.filter(ImageFilter.GaussianBlur(blur))
         if dim != 1: fr = ImageEnhance.Brightness(fr).enhance(dim)
         fr = fr.convert("RGBA"); fr.alpha_composite(grad()); return fr
+    def callout(self, fr, i, t, s):
+        co = s.get("callout")
+        if not co: return
+        zr = getattr(self, "_zrel", 1.0)
+        px = W / 2 + (co.get("x", .5) * W - W / 2) * zr; py = H / 2 + (co.get("y", .5) * H - H / 2) * zr
+        ta = self.wt(i, co.get("at_word", 1)); q = back(prog(t, ta - .1, .45), 2.0)
+        if q <= 0: return
+        d = ImageDraw.Draw(fr); R = co.get("r", 110) * q
+        for k in range(2):  # пульс
+            ph = ((t - ta) * 1.2 + k * .5) % 1.0 if t > ta + .4 else 0
+            if ph > 0:
+                rr = R + 90 * ph; al = int(200 * (1 - ph))
+                d.ellipse([px - rr, py - rr, px + rr, py + rr], outline=YEL + (al,), width=4)
+        d.ellipse([px - R, py - R, px + R, py + R], outline=YEL, width=9)
+        txt = co.get("text", "").upper()
+        if txt:
+            k2 = ease_out(prog(t, ta + .15, .35)); up = co.get("pos", "up") == "up"
+            lx = clamp(px, 260, W - 260); ly = py - R - 150 if up else py + R + 150
+            d.line([(px, py - R if up else py + R), (px + (lx - px) * k2, py - (R + 95) * k2 if up else py + (R + 95) * k2)], fill=YEL, width=6)
+            if k2 > .3:
+                f = F(FBLACK, 50); tw = f.getlength(txt) + 60
+                L = Image.new("RGBA", (int(tw), 90), (0, 0, 0, 0)); dl = ImageDraw.Draw(L)
+                dl.rounded_rectangle([0, 0, tw - 1, 89], radius=18, fill=RED + (255,)); dl.text((tw / 2, 45), txt, font=f, fill=WHITE, anchor="mm")
+                sc = .7 + .3 * k2; L = L.resize((max(1, int(tw * sc)), max(1, int(90 * sc))), Image.BICUBIC)
+                fr.alpha_composite(L, (int(lx - L.width / 2), int(ly - L.height / 2)))
     def label(self, fr, i, t, s):
         a, _ = self.bounds(i)
+        self.callout(fr, i, t, s)
         if s.get("label"): chip(fr, 60, 250, s["label"].upper(), RED, WHITE, 42, slide=-500 * (1 - ease_out(prog(t, a, .35))))
         if s.get("sublabel"): chip(fr, 60, 345, s["sublabel"].upper(), (20, 30, 60), PALE, 28, slide=-500 * (1 - ease_out(prog(t, a + .15, .35))), dot=False, path=FBOLD)
 
@@ -305,7 +365,7 @@ class Clip:
         self.label(fr, i, t, s); return fr
     def stat(self, i, t, s):
         a, b = self.bounds(i)
-        fr = self.bg(i, t, blur=s.get("blur", 6), dim=.55, z=(1.1, 1.3))
+        fr = self.bg(i, t, blur=s.get("blur", 6), dim=s.get("dim", .55), z=(1.1, 1.3))
         ta = self.wt(i, s.get("at_word", 0)); q = back(prog(t, ta - .1, .3), 2.2)
         if q > 0:
             v = float(s["value"]) * ease_out(prog(t, ta - .1, .9))
@@ -318,7 +378,7 @@ class Clip:
         self.label(fr, i, t, s); return fr
     def compare(self, i, t, s):
         a, b = self.bounds(i)
-        fr = self.bg(i, t, blur=14, dim=.35, z=(1.2, 1.35)); d = ImageDraw.Draw(fr)
+        fr = self.bg(i, t, blur=s.get("blur", 14), dim=s.get("dim", .35), z=(1.2, 1.35)); d = ImageDraw.Draw(fr)
         items = s["items"][:3]; vmax = max(float(x["value"]) for x in items) or 1
         base, top = 1160, 560; n = len(items); bw = 230 if n == 2 else 190
         gap = (W - 160 - n * bw) / (n + 1 if n > 1 else 2)
@@ -639,7 +699,8 @@ def build(scn_path, out, preview=None):
     S = json.load(open(scn_path)); base = os.path.dirname(os.path.abspath(scn_path))
     work = os.path.join(base, "work"); os.makedirs(work, exist_ok=True)
     scenes = [s for s in S["scenes"] if s.get("type") != "outro"]
-    scenes.append({"type": "outro", "say": S.get("outro_say", OUTRO_SAY), "image": scenes[0].get("image")})
+    scenes.append({"type": "outro", "say": S.get("outro_say", OUTRO_SAY), "image": scenes[0].get("image"),
+                   "video": scenes[0].get("video"), "video_start": scenes[0].get("video_start", 0)})
     imgs = {}
     for i, s in enumerate(scenes):
         if s.get("image"):
@@ -652,6 +713,11 @@ def build(scn_path, out, preview=None):
         vo = voice(scenes, work)
     json.dump(vo, open(f"{work}/voice.json", "w"), ensure_ascii=False)
     c = Clip(scenes, vo, imgs); badge = S.get("badge", "ВИДЕО ДНЯ")
+    c.vids = {}
+    for i, s in enumerate(scenes):
+        if s.get("video"):
+            vp = s["video"] if os.path.isabs(s["video"]) else os.path.join(base, s["video"])
+            c.vids[i] = VideoSrc(vp, s.get("video_start", 0), tuple(s.get("focus", (.5, .5))))
     if preview:
         res = []
         for i in range(len(scenes)):
