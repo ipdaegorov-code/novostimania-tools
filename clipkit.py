@@ -1,5 +1,6 @@
 """clipkit — вертикальное видео «Новостимания» по сценарию: озвучка, моушн-графика, субтитры, музыка.
 Запуск: python3 clipkit.py scenario.json out.mp4 [models_dir] [preview]
+       python3 clipkit.py scenario.json cover.jpg models_dir cover   — обложка + cover_thumb.jpg
 """
 import json, math, random, re, subprocess, sys, wave, os
 import numpy as np
@@ -74,6 +75,39 @@ def voice(scenes, work):
         out.append({"dur": dur, "words": toks, "wav": p})
     return out
 
+def voice_from_file(scenes, audio, work):
+    """Готовая озвучка всего сценария одним файлом (например, ElevenLabs): режем по сценам по таймингам слов."""
+    from faster_whisper import WhisperModel
+    full = f"{work}/vo_full.wav"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", audio, "-ac", "1", "-ar", str(SR), full], check=True)
+    with wave.open(full) as w: A = np.frombuffer(w.readframes(w.getnframes()), np.int16).astype(np.float64) / 32767
+    a16 = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", full, "-ac", "1", "-ar", "16000", "-f", "f32le", "-"], capture_output=True).stdout
+    asr = WhisperModel("base", device="cpu", compute_type="int8", download_root=MD)
+    segs, _ = asr.transcribe(np.frombuffer(a16, np.float32), language="ru", word_timestamps=True)
+    ww = [w for sg in segs for w in sg.words]
+    xs, ys, pos = [0.0], [ww[0].start if ww else 0.0], 0
+    for w in ww:
+        n = len(letters(w.word))
+        if n: xs += [pos + .01, pos + n]; ys += [w.start, w.end]; pos += n
+    parsed = [parse(sc["say"]) for sc in scenes]
+    allw = [[w for w in sp.split() if letters(w)] for sp, _ in parsed]
+    tk = sum(len(letters(w)) for ws in allw for w in ws) or 1
+    times, q = [], 0
+    for ws in allw:
+        tt = []
+        for w in ws:
+            n = len(letters(w))
+            tt.append((float(np.interp(q / tk * pos, xs, ys)), float(np.interp((q + n) / tk * pos, xs, ys)))); q += n
+        times.append(tt)
+    scn = []
+    for i, (sp, disp) in enumerate(parsed):
+        toks, k = [], 0
+        for d, n in disp:
+            s_ = times[i][k:k + n] or [times[i][-1]]; k += n
+            toks.append({"w": d, "s": s_[0][0], "e": s_[-1][1]})
+        scn.append({"words": toks})
+    return {"continuous": True, "wav": full, "len": len(A) / SR, "scenes": scn}
+
 # ======================= КАРТИНКИ =======================
 def load(path, side=2600):
     im = Image.open(path).convert("RGB")
@@ -146,12 +180,20 @@ def wrap(text, f, mw):
 class Clip:
     def __init__(self, sc, vo, imgs):
         self.sc, self.vo, self.imgs = sc, vo, imgs
-        self.starts, t = [], .45
-        for v in vo: self.starts.append(t); t += v["dur"] + .25
-        self.total = t + .9
         self.words = []
-        for i, v in enumerate(vo):
-            for w in v["words"]: self.words.append(dict(w, s=self.starts[i] + w["s"], e=self.starts[i] + w["e"], sc=i))
+        if isinstance(vo, dict):  # одна непрерывная дорожка: сцены подстраиваются под голос
+            off = .45; self.starts = []
+            for i, v in enumerate(vo["scenes"]):
+                t0 = off + (v["words"][0]["s"] if v["words"] else 0) - .12
+                self.starts.append(max(off if i == 0 else 0, t0) if i else off)
+                for w in v["words"]: self.words.append(dict(w, s=off + w["s"], e=off + w["e"], sc=i))
+            self.total = off + vo["len"] + .9
+        else:
+            self.starts, t = [], .45
+            for v in vo: self.starts.append(t); t += v["dur"] + .25
+            self.total = t + .9
+            for i, v in enumerate(vo):
+                for w in v["words"]: self.words.append(dict(w, s=self.starts[i] + w["s"], e=self.starts[i] + w["e"], sc=i))
         self.chunks = self._chunks()
     def scene_at(self, t):
         k = 0
@@ -370,9 +412,10 @@ class Clip:
     def audio(self, path):
         n = int(self.total * SR); tt = np.arange(n) / SR
         vo = np.zeros(n)
-        for i, v in enumerate(self.vo):
-            with wave.open(v["wav"]) as w: a = np.frombuffer(w.readframes(w.getnframes()), np.int16) / 32767
-            j = int(self.starts[i] * SR); vo[j:j + len(a)] += a[:n - j]
+        tracks = [(self.vo["wav"], .45)] if isinstance(self.vo, dict) else [(v["wav"], self.starts[i]) for i, v in enumerate(self.vo)]
+        for path_, st in tracks:
+            with wave.open(path_) as w: a = np.frombuffer(w.readframes(w.getnframes()), np.int16) / 32767
+            j = int(st * SR); vo[j:j + len(a)] += a[:n - j]
         mus = np.zeros(n); note = lambda m: 440 * 2 ** ((m - 69) / 12)
         rnd = random.Random(len(self.sc))
         prog_ = rnd.choice([[[45, 52, 57, 60, 64], [41, 48, 53, 57, 60], [43, 50, 55, 59, 62], [40, 47, 52, 56, 59]],
@@ -416,6 +459,182 @@ class Clip:
         with wave.open(path, "wb") as w:
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes((mix * 32767).astype(np.int16).tobytes())
 
+# ======================= ОБЛОЖКА =======================
+def _cv_fit(text, path, size, maxw):
+    while F(path, size).getlength(text) > maxw and size > 36: size -= 4
+    return F(path, size)
+def _cv_text(base, xy, s, font, fill, blur=10, off=(0, 8), alpha=190):
+    L = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    ImageDraw.Draw(L).text((xy[0] + off[0], xy[1] + off[1]), s, font=font, fill=(0, 0, 0, alpha), anchor="mm")
+    base.alpha_composite(L.filter(ImageFilter.GaussianBlur(blur)))
+    ImageDraw.Draw(base).text(xy, s, font=font, fill=fill, anchor="mm")
+def _cv_header(base, badge):
+    d = ImageDraw.Draw(base)
+    logo(d, 96, 150, 38); d.text((150, 150), "НОВОСТИМАНИЯ", font=F(FXB, 40), fill=YEL, anchor="lm")
+    fb = F(FXB, 34); bw = fb.getlength(badge) + 86
+    d.rounded_rectangle([W - 60 - bw, 118, W - 60, 182], radius=14, fill=RED)
+    d.ellipse([W - 60 - bw + 22, 142, W - 60 - bw + 38, 158], fill=WHITE)
+    d.text((W - 60 - bw + 60, 150), badge, font=fb, fill=WHITE, anchor="lm")
+def _cv_cover_img(path, focus=(.5, .5), zoom=1.15):
+    im = Image.open(path).convert("RGB")
+    s = max(W / im.width, H / im.height) * zoom
+    im = im.resize((int(im.width * s), int(im.height * s)), Image.LANCZOS)
+    x = int((im.width - W) * focus[0]); y = int((im.height - H) * focus[1])
+    im = im.crop((x, y, x + W, y + H))
+    return ImageEnhance.Color(ImageEnhance.Contrast(im).enhance(1.15)).enhance(1.2)
+def _cv_space(seed=3):
+    rnd = random.Random(seed)
+    im = Image.new("RGB", (W, H), (4, 6, 16))
+    neb = Image.new("RGB", (W // 4, H // 4), (0, 0, 0)); dn = ImageDraw.Draw(neb)
+    for cx, cy, r, c in [(50, 120, 150, (55, 30, 110)), (230, 260, 170, (120, 35, 45)), (140, 60, 110, (20, 55, 130))]:
+        dn.ellipse([cx - r, cy - r, cx + r, cy + r], fill=c)
+    im = Image.blend(im, neb.filter(ImageFilter.GaussianBlur(45)).resize((W, H), Image.BICUBIC), .45); d = ImageDraw.Draw(im)
+    for _ in range(420):
+        x, y, r = rnd.uniform(0, W), rnd.uniform(0, H * .8), rnd.uniform(.6, 2.8); v = rnd.randint(120, 255)
+        d.ellipse([x - r / 2, y - r / 2, x + r / 2, y + r / 2], fill=(v, v, min(255, v + 25)))
+    return im.convert("RGBA")
+def _cv_planet(base, path, top_y, R=1500, rot=180):
+    D = 2 * R; g = ImageEnhance.Contrast(Image.open(path).convert("RGB").rotate(rot).resize((D, D), Image.LANCZOS)).enhance(1.15)
+    m = Image.new("L", (D, D), 0); ImageDraw.Draw(m).ellipse([0, 0, D - 1, D - 1], fill=255)
+    cx, cy = W / 2, top_y + R
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(glow).ellipse([cx - R - 40, cy - R - 40, cx + R + 40, cy + R + 40], fill=(255, 120, 60, 120))
+    base.alpha_composite(glow.filter(ImageFilter.GaussianBlur(40)))
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0)); layer.paste(g, (int(cx - R), int(cy - R)), m)
+    base.alpha_composite(layer)
+def _cv_bottom_shade(base, top_y):
+    sh = Image.new("RGBA", (W, H), (0, 0, 0, 0)); ds = ImageDraw.Draw(sh)
+    for y in range(int(top_y), H): ds.line([(0, y), (W, y)], fill=(5, 6, 14, int(min(235, 60 + (y - top_y) * .55))))
+    base.alpha_composite(sh)
+def _cv_shape(x0, x1, base_y, h, shape):
+    w = x1 - x0
+    if shape == "mountain_small":
+        pts = [(0, 0), (.18, .35), (.3, .5), (.42, .82), (.5, 1), (.58, .86), (.66, .7), (.8, .42), (1, 0)]
+    elif shape == "mountain":
+        pts = [(0, 0), (.1, .22), (.22, .55), (.34, .84), (.42, .97), (.5, 1), (.58, .97), (.66, .84), (.78, .55), (.9, .22), (1, 0)]
+    else:
+        return None
+    return [(x0 + px * w, base_y - py * h) for px, py in pts]
+def _cv_fill(base, box_or_poly, tex_path, tint, snow=False, radius=26):
+    poly = box_or_poly if isinstance(box_or_poly[0], tuple) else None
+    if poly:
+        xs = [p[0] for p in poly]; ys = [p[1] for p in poly]; ox, oy = min(xs), min(ys)
+        bw, bh = int(max(xs) - ox) + 2, int(max(ys) - oy) + 2
+    else:
+        x0, y0, x1, y1 = box_or_poly; ox, oy, bw, bh = x0, y0, int(x1 - x0), int(y1 - y0)
+    bw, bh = max(bw, 2), max(bh, 2)
+    if tex_path:
+        tex = Image.open(tex_path).convert("RGB"); s = max(bw / tex.width, bh / tex.height) * 1.2
+        tex = tex.resize((max(bw, int(tex.width * s)), max(bh, int(tex.height * s))), Image.LANCZOS)
+        tex = tex.crop(((tex.width - bw) // 2, (tex.height - bh) // 2, (tex.width - bw) // 2 + bw, (tex.height - bh) // 2 + bh))
+        tex = Image.blend(tex, Image.new("RGB", tex.size, tint), .3)
+    else:
+        n = np.random.RandomState(5).rand(bh // 6 + 1, bw // 6 + 1)
+        n = Image.fromarray((n * 255).astype("uint8")).resize((bw, bh), Image.BICUBIC).filter(ImageFilter.GaussianBlur(3))
+        tex = Image.merge("RGB", [Image.eval(n, lambda v, c=c: int(c * (.75 + .5 * v / 255))) for c in tint])
+    g = Image.new("L", (bw, bh)); gd = ImageDraw.Draw(g)
+    for x in range(bw): gd.line([(x, 0), (x, bh)], fill=int(255 - 120 * x / bw))
+    from PIL import ImageChops
+    tex = ImageEnhance.Brightness(ImageChops.multiply(tex, Image.merge("RGB", [g] * 3))).enhance(1.35)
+    m = Image.new("L", (bw, bh), 0); dm = ImageDraw.Draw(m)
+    if poly: dm.polygon([(x - ox, y - oy) for x, y in poly], fill=255)
+    else: dm.rounded_rectangle([0, 0, bw - 1, bh + radius], radius=radius, fill=255)
+    L = Image.new("RGBA", (bw, bh), (0, 0, 0, 0)); L.paste(tex, (0, 0), m)
+    if snow and poly:
+        top = min(poly, key=lambda p: p[1]); tx, ty = top[0] - ox, top[1] - oy
+        ImageDraw.Draw(L).polygon([(tx, ty), (tx - bw * .1, ty + bh * .2), (tx - bw * .03, ty + bh * .17), (tx + bw * .02, ty + bh * .22), (tx + bw * .1, ty + bh * .18)], fill=(240, 245, 255, 235))
+    S = Image.new("RGBA", base.size, (0, 0, 0, 0)); ds = ImageDraw.Draw(S)
+    if poly: ds.polygon([(x + 14, y + 10) for x, y in poly], fill=(0, 0, 0, 150))
+    else: ds.rounded_rectangle([ox + 14, oy + 10, ox + bw + 14, oy + bh + 10], radius=radius, fill=(0, 0, 0, 150))
+    base.alpha_composite(S.filter(ImageFilter.GaussianBlur(14)))
+    base.alpha_composite(L, (int(ox), int(oy)))
+    d = ImageDraw.Draw(base)
+    if poly: d.line(poly, fill=(255, 255, 255, 90), width=3)
+    else: d.rounded_rectangle([ox, oy, ox + bw, oy + bh + radius], radius=radius, outline=(255, 255, 255, 90), width=3)
+def _cv_badge(base, cx, cy, txt, D=250):
+    L = Image.new("RGBA", (D, D), (0, 0, 0, 0)); d = ImageDraw.Draw(L)
+    d.ellipse([6, 6, D - 7, D - 7], fill=RED); d.ellipse([20, 20, D - 21, D - 21], outline=WHITE, width=5)
+    d.text((D / 2, D / 2), txt, font=_cv_fit(txt, FBLACK, 92, D - 60), fill=WHITE, anchor="mm")
+    L = L.rotate(-10, Image.BICUBIC)
+    S = Image.new("RGBA", base.size, (0, 0, 0, 0)); ImageDraw.Draw(S).ellipse([cx - D / 2 + 6, cy - D / 2 + 12, cx + D / 2 + 6, cy + D / 2 + 12], fill=(0, 0, 0, 140))
+    base.alpha_composite(S.filter(ImageFilter.GaussianBlur(12))); base.alpha_composite(L, (int(cx - D / 2), int(cy - D / 2)))
+def _cv_title(base, lines, accent, y0=330, sizes=(150, 170)):
+    y = y0
+    for k, ln in enumerate(lines[:3]):
+        f = _cv_fit(ln, FBLACK, sizes[1] if k == accent else sizes[0], W - 110)
+        _cv_text(base, (W / 2, y), ln, f, YEL if k == accent else WHITE); y += f.size * 1.0
+    return y
+
+def make_cover(S, base, out):
+    """S — сценарий; S["cover"] — настройки обложки (см. README)."""
+    cv = dict(S.get("cover") or {})
+    P = lambda p: None if not p else (p if os.path.isabs(p) else os.path.join(base, p))
+    scenes = S["scenes"]; hook = next((s for s in scenes if s["type"] == "hook"), scenes[0])
+    cmp_ = next((s for s in scenes if s["type"] == "compare"), None)
+    style = cv.get("style") or ("compare" if cmp_ else "title")
+    badge = cv.get("badge", S.get("badge", "ВИДЕО ДНЯ")).upper()
+    title = [t.upper() for t in cv.get("title", hook.get("title", []))]
+    accent = cv.get("accent", hook.get("accent", len(title) - 1))
+    img = P(cv.get("image") or hook.get("image") or scenes[0].get("image"))
+    if style == "compare":
+        items = cv.get("items") or (cmp_ or {}).get("items") or []
+        unit = cv.get("unit", (cmp_ or {}).get("unit", "")); dec = int(cv.get("decimals", (cmp_ or {}).get("decimals", 0)))
+        shape = cv.get("shape", "bar")
+        im = _cv_space() if cv.get("space") else ImageEnhance.Brightness(_cv_cover_img(img).filter(ImageFilter.GaussianBlur(18))).enhance(.35).convert("RGBA")
+        base_y = 1470
+        if cv.get("ground_image"): _cv_planet(im, P(cv["ground_image"]), base_y - 20)
+        _cv_bottom_shade(im, base_y - 20)
+        n = len(items[:3]); vmax = max(float(i["value"]) for i in items[:3]) or 1; hmax = 640
+        if n == 2: xs_ = [(70, 420), (360, 1050)] if shape == "mountain" else [(120, 420), (560, 960)]
+        else: xs_ = [(80, 360), (400, 680), (720, 1000)]
+        for k, it in enumerate(items[:3]):
+            x0, x1 = xs_[k]; h = max(40, hmax * float(it["value"]) / vmax); main = k == n - 1
+            tint = (230, 110, 55) if main else (110, 118, 135)
+            tex = P(it.get("image")) if it.get("image") else (img if main else None)
+            if shape == "mountain":
+                poly = _cv_shape(x0, x1, base_y, h, "mountain" if main else "mountain_small")
+                _cv_fill(im, poly, tex, tint, snow=not main and not it.get("image"))
+            else:
+                _cv_fill(im, (x0, base_y - h, x1, base_y), tex, tint)
+            cx = (x0 + x1) / 2; lab = it.get("label") or (fmt(float(it["value"]), dec) + (" " + unit.upper() if unit else ""))
+            big = main
+            _cv_text(im, (cx, base_y - h - (150 if big else 120)), lab, _cv_fit(lab, FBLACK, 118 if big else 72, (x1 - x0) + 140), YEL if big else WHITE, blur=10, off=(0, 6))
+            _cv_text(im, (cx, base_y - h - (70 if big else 55)), it["name"].upper(), _cv_fit(it["name"].upper(), FXB, 42 if big else 38, (x1 - x0) + 120), WHITE if big else (200, 210, 230), blur=6, off=(0, 3))
+        if cv.get("badge_text") or (cmp_ or {}).get("badge"):
+            x0, x1 = xs_[0]; h0 = hmax * float(items[0]["value"]) / vmax
+            by = min(base_y - h0 - 330, 960); _cv_badge(im, (x0 + x1) / 2 + (0 if shape == "mountain" else 0), max(720, by), cv.get("badge_text") or cmp_["badge"])
+        _cv_title(im, title, accent)
+    else:
+        im = _cv_cover_img(img, tuple(cv.get("focus", hook.get("focus", (.5, .45))))).convert("RGBA")
+        g = Image.new("RGBA", (W, H), (0, 0, 0, 0)); d = ImageDraw.Draw(g)
+        for y in range(H):
+            a = 70
+            if y < 380: a = max(a, int(190 * (1 - y / 380)))
+            if 520 < y < 1500: a = max(a, int(150 * (1 - abs(y - 1010) / 490)))
+            if y > 1500: a = max(a, int(230 * (y - 1500) / 420))
+            d.line([(0, y), (W, y)], fill=(5, 8, 20, a))
+        im.alpha_composite(g); im.alpha_composite(vignette())
+        y = _cv_title(im, title, accent, y0=560, sizes=(168, 168))
+        sub = (cv.get("subline") or hook.get("subline") or "").upper()
+        if sub:
+            f = _cv_fit(sub, FBLACK, 72, W - 220); tw = f.getlength(sub) + 90
+            L = Image.new("RGBA", (int(tw), 120), (0, 0, 0, 0)); dl = ImageDraw.Draw(L)
+            dl.rounded_rectangle([0, 0, tw - 1, 119], radius=24, fill=RED + (255,)); dl.text((tw / 2, 60), sub, font=f, fill=WHITE, anchor="mm")
+            L = L.rotate(-3, Image.BICUBIC, expand=True); y += 30
+            im.alpha_composite(L, (int(W / 2 - L.width / 2), int(y))); y += L.height + 70
+        if cv.get("number"):
+            f = _cv_fit(cv["number"].upper(), FBLACK, 230, W - 120)
+            _cv_text(im, (W / 2, y + f.size * .45), cv["number"].upper(), f, YEL, blur=14); y += f.size
+            if cv.get("caption"): _cv_text(im, (W / 2, y + 30), cv["caption"].upper(), _cv_fit(cv["caption"].upper(), FXB, 48, W - 120), WHITE, blur=8, off=(0, 4))
+    _cv_header(im, badge)
+    rgb = im.convert("RGB"); rgb.save(out, quality=93)
+    th = os.path.splitext(out)[0] + "_thumb.jpg"; t = rgb.resize((180, 320), Image.LANCZOS); q = 90
+    while True:
+        t.save(th, quality=q)
+        if os.path.getsize(th) < 190_000 or q < 40: break
+        q -= 10
+    return out, th
+
 def build(scn_path, out, preview=None):
     S = json.load(open(scn_path)); base = os.path.dirname(os.path.abspath(scn_path))
     work = os.path.join(base, "work"); os.makedirs(work, exist_ok=True)
@@ -426,7 +645,11 @@ def build(scn_path, out, preview=None):
         if s.get("image"):
             p = s["image"] if os.path.isabs(s["image"]) else os.path.join(base, s["image"])
             imgs[i] = load(p)
-    vo = voice(scenes, work)
+    if S.get("voiceover"):
+        vp = S["voiceover"] if os.path.isabs(S["voiceover"]) else os.path.join(base, S["voiceover"])
+        vo = voice_from_file(scenes, vp, work)
+    else:
+        vo = voice(scenes, work)
     json.dump(vo, open(f"{work}/voice.json", "w"), ensure_ascii=False)
     c = Clip(scenes, vo, imgs); badge = S.get("badge", "ВИДЕО ДНЯ")
     if preview:
@@ -447,7 +670,10 @@ def build(scn_path, out, preview=None):
     return out, round(c.total, 1)
 
 if __name__ == "__main__":
-    if len(sys.argv) > 4 and sys.argv[4] == "preview":
+    if len(sys.argv) > 4 and sys.argv[4] == "cover":
+        sp = sys.argv[1]
+        print(make_cover(json.load(open(sp)), os.path.dirname(os.path.abspath(sp)), sys.argv[2]))
+    elif len(sys.argv) > 4 and sys.argv[4] == "preview":
         print(build(sys.argv[1], sys.argv[2], preview=True))
     else:
         print(build(sys.argv[1], sys.argv[2]))
