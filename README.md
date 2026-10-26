@@ -33,6 +33,8 @@ python3 clipkit.py scenario.json cover.jpg ~/video/models cover   # cover.jpg 10
 
 Поле `voiceover` в сценарии (путь к mp3/wav всей озвучки одним файлом, например из ElevenLabs) — движок не режет её, а подстраивает сцены и субтитры под голос.
 
+Для бота: `python3 -m nm.voice make --scenario scenario.json` озвучивает весь сценарий через ElevenLabs (ключ `ELEVENLABS_API_KEY`, голос `ELEVENLABS_VOICE_ID` или `video_of_day.eleven_voice_id` в `config.json`) и сам ставит `voiceover`. `python3 -m nm.voice voices` — список голосов аккаунта.
+
 ## Живое видео и графика поверх
 
 У любой сцены вместо (или вместе с) `image` можно указать `video` — путь к mp4. Ролик обрезается под 9:16, идёт по кругу, лёгкий наезд.
@@ -51,7 +53,7 @@ python3 clipkit.py scenario.json cover.jpg ~/video/models cover   # cover.jpg 10
 - `prompts/post.md` — пост по слоту (слоты, рубрики, хэштеги — в `config.json`);
 - `prompts/video.md` — «Видео дня» (21:40).
 
-Модули печатают JSON, ключи берут из окружения (`VK_TOKEN`, `TG_TOKEN`, `MAX_TOKEN`, `PIXABAY_KEY`, для фото в ВК — `NM_GATE_URL`, `NM_GATE_KEY`) и никогда их не выводят:
+Модули печатают JSON, ключи берут из окружения (`VK_TOKEN`, `TG_TOKEN`, `MAX_TOKEN`, `PIXABAY_KEY`, для озвучки — `ELEVENLABS_API_KEY`, для фото в ВК — `NM_GATE_URL`, `NM_GATE_KEY`) и никогда их не выводят:
 
 | модуль | что делает |
 |---|---|
@@ -59,6 +61,7 @@ python3 clipkit.py scenario.json cover.jpg ~/video/models cover   # cover.jpg 10
 | `nm.card` | айдентика, квадрат, затемнение, бейджи, флаги, синий фон |
 | `nm.photos` | поиск свободных фото и видео (Pixabay, Openverse, Wikimedia, NASA), портреты, скачивание с проверкой |
 | `nm.approve` | превью владельцу и ожидание ответов в Telegram |
+| `nm.voice` | озвучка «Видео дня» через ElevenLabs |
 | `nm.publish` | ВК (отложенный пост, с картинкой — через шлюз `server/vkgate.py`, см. `server/README.md`), Telegram, MAX, последние посты MAX |
 
 Справка по командам — в начале каждого файла.
