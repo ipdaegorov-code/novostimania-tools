@@ -1,6 +1,8 @@
 """Озвучка «Видео дня» через ElevenLabs: весь текст сценария одним файлом.
 
 python3 -m nm.voice make --scenario scenario.json [--out voiceover.wav]   # пишет файл и поле "voiceover" в сценарий
+python3 -m nm.voice music --scenario scenario.json --prompt "calm cosmic ambient, slow synth pads" [--seconds 45]
+                                                                         # фоновая музыка ElevenLabs Music → music.mp3 и поле "music"
 python3 -m nm.voice voices                                               # голоса аккаунта: id, имя, категория
 
 Ключ — ELEVENLABS_API_KEY, голос — ELEVENLABS_VOICE_ID или config.json → video_of_day.eleven_voice_id.
@@ -92,6 +94,25 @@ def make(scn, dst):
     out({"ok": True, "file": dst, "chars": len(text), "tries": k + 1, "fillers": best[1], "text": text})
 
 
+def music(scn, prompt, seconds, dst="music.mp3"):
+    """Инструментальный трек под тему видео (ElevenLabs Music)."""
+    body = json.dumps({"prompt": prompt + ". Instrumental background music for a short news video, no vocals, steady, not distracting.",
+                       "music_length_ms": int(max(10, min(120, seconds)) * 1000), "model_id": "music_v1",
+                       "force_instrumental": True}).encode()
+    audio = http(f"{API}/music?output_format=mp3_44100_128", data=body, timeout=300, raw=True,
+                 headers={"xi-api-key": need("ELEVENLABS_API_KEY"), "Content-Type": "application/json", "Accept": "audio/mpeg"})
+    if len(audio) < 20000 or audio[:1] == b"{":
+        die(f"ElevenLabs Music не вернул звук: {audio[:300].decode('utf-8', 'replace')}")
+    S = json.load(open(scn, encoding="utf-8"))
+    base = os.path.dirname(os.path.abspath(scn))
+    dst = os.path.join(base, dst)
+    with open(dst, "wb") as f:
+        f.write(audio)
+    S["music"], S["music_start"] = dst, 0
+    json.dump(S, open(scn, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    out({"ok": True, "file": dst, "seconds": seconds})
+
+
 def voices():
     r = http(f"{API}/voices", headers={"xi-api-key": need("ELEVENLABS_API_KEY")})
     if "voices" not in r:
@@ -101,8 +122,15 @@ def voices():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["make", "voices"])
+    ap.add_argument("cmd", choices=["make", "music", "voices"])
+    ap.add_argument("--prompt", default="")
+    ap.add_argument("--seconds", type=float, default=45)
     ap.add_argument("--scenario", default="scenario.json")
     ap.add_argument("--out", default="voiceover.wav")
     a = ap.parse_args()
-    make(a.scenario, a.out) if a.cmd == "make" else voices()
+    if a.cmd == "make":
+        make(a.scenario, a.out)
+    elif a.cmd == "music":
+        music(a.scenario, a.prompt or die("нужен --prompt"), a.seconds)
+    else:
+        voices()
