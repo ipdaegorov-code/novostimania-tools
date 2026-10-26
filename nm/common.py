@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UA = "NovostimaniyaBot/1.0 (https://vk.com/newsobsession)"
-SECRET_VARS = ("VK_TOKEN", "TG_TOKEN", "MAX_TOKEN", "PIXABAY_KEY")
+SECRET_VARS = ("VK_TOKEN", "TG_TOKEN", "MAX_TOKEN", "PIXABAY_KEY", "NM_GATE_KEY")
 STATE = os.path.expanduser("~/.nm_state.json")
 
 
