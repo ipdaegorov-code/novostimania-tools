@@ -18,8 +18,18 @@ OUTRO_SAY = "Подписывайся на Новостим+анию — зав�
 TOK = re.compile(r"\{([^|}]+)\|([^}]+)\}|(\S+)")
 
 
+ABBR = {"МРОТ": "мрот", "НДС": "эн-дэ-эс", "НДФЛ": "эн-дэ-эф-эл", "США": "сэ-шэ-а", "ЦБ": "цэ-бэ", "ВВП": "вэ-вэ-пэ",
+        "ЕС": "Евросоюз", "ООН": "оон", "НАТО": "нато", "ЕГЭ": "егэ", "ОГЭ": "огэ", "МВД": "эм-вэ-дэ", "ФСБ": "эф-эс-бэ",
+        "МИД": "мид", "РФ": "эр-эф", "ВОЗ": "воз", "ЖКХ": "жэ-ка-ха", "ИИ": "искусственный интеллект", "МКС": "эм-ка-эс",
+        "ЕАЭС": "евразийский союз", "МВФ": "эм-вэ-эф", "ОПЕК": "опек", "ВСУ": "вэ-эс-у", "ДНР": "дэ-эн-эр", "ЛНР": "эл-эн-эр"}
+
+
 def spoken(say):
-    t = " ".join(m.group(2) if m.group(1) else m.group(3) for m in TOK.finditer(say)).replace("+", "")
+    """Текст для диктора: из {цифры|слова} — слова; «+» перед гласной → знак ударения (ElevenLabs его слушает);
+    известные аббревиатуры (ABBR) → как их говорят вслух; остальные пиши в say сам: «{МРОТ|мрот}», «{ЦБ|цэ-бэ}»."""
+    t = " ".join(m.group(2) if m.group(1) else m.group(3) for m in TOK.finditer(say))
+    t = re.sub(r"\+([аеёиоуыэюяАЕЁИОУЫЭЮЯ])", "\\1\u0301", t).replace("+", "")
+    t = re.sub(r"\b[А-ЯЁ]{2,6}\b", lambda m: ABBR.get(m.group(0), m.group(0)), t)
     return re.sub(r"\s+([.,!?:;…»)])", r"\1", t).strip()
 
 
@@ -53,17 +63,18 @@ def call(url, body, minsize):
 
 def tts(text, seed):
     o = cfg().get("video_of_day", {})
-    body = json.dumps({"text": text, "model_id": o.get("eleven_model", "eleven_multilingual_v2"), "seed": seed,
-                       "apply_text_normalization": "on",
-                       "voice_settings": {"stability": 0.75, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": True}}).encode()
+    model = o.get("eleven_model", "eleven_multilingual_v2")
+    vs = {"stability": 0.5, "similarity_boost": 0.8} if model == "eleven_v3" else \
+         {"stability": 0.6, "similarity_boost": 0.8, "style": 0.0, "use_speaker_boost": True}
+    body = json.dumps({"text": text, "model_id": model, "seed": seed, "voice_settings": vs}).encode()
     return call(f"{API}/text-to-speech/{voice_id()}?output_format=mp3_44100_128", body, 5000)
 
 
 def tighten(src, dst):
-    """Паузы длиннее 0,3 с сжимаем до 0,25 с, тишину в начале убираем."""
+    """Только очень длинные паузы (>0,7 с) сжимаем до 0,45 с и убираем тишину в начале — мягко, без обрезки слов."""
     import subprocess
-    af = ("silenceremove=start_periods=1:start_threshold=-45dB:"
-          "stop_periods=-1:stop_duration=0.3:stop_threshold=-45dB:stop_silence=0.25")
+    af = ("silenceremove=start_periods=1:start_threshold=-55dB:start_silence=0.05:"
+          "stop_periods=-1:stop_duration=0.7:stop_threshold=-55dB:stop_silence=0.45")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-af", af, "-ac", "1", "-ar", "48000", dst], check=True)
 
 
