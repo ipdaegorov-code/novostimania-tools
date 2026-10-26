@@ -5,6 +5,7 @@
 КЛЮЧИ ($VK_TOKEN, $TG_TOKEN, $MAX_TOKEN, необязательный $PIXABAY_KEY) модули берут сами. Никогда не печатай их (echo/env/printenv/cat), не пиши в файлы и сообщения.
 
 ## 0. Старт
+- `python3 -m pip install --break-system-packages -q pillow` (модули работают на `python3`; pip может ставить под другую версию — ставь именно так).
 - `python3 -m nm.publish check` — если `missing` не пуст, напиши владельцу через SendUserMessage, какой переменной нет, и закончи.
 - `python3 -m nm.slot` (или `--at ЧЧ:ММ`, если слот указан в сообщении запуска). `slot: null` — ничего не делай. Запомни `slot_unix`, `approve_until`, `date`, `photo_order`, рубрику, `badge`, `hashtag`, `kind`, `opinion`, `video_links`.
 - Если в сообщении запуска сказано не публиковать — выполни всё до превью включительно, но в каналы не выкладывай.
