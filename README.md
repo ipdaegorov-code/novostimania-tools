@@ -51,7 +51,7 @@ python3 clipkit.py scenario.json cover.jpg ~/video/models cover   # cover.jpg 10
 - `prompts/post.md` — пост по слоту (слоты, рубрики, хэштеги — в `config.json`);
 - `prompts/video.md` — «Видео дня» (21:40).
 
-Модули печатают JSON, ключи берут из окружения (`VK_TOKEN`, `TG_TOKEN`, `MAX_TOKEN`, `PIXABAY_KEY`) и никогда их не выводят:
+Модули печатают JSON, ключи берут из окружения (`VK_TOKEN`, `TG_TOKEN`, `MAX_TOKEN`, `PIXABAY_KEY`, для фото в ВК — `NM_GATE_URL`, `NM_GATE_KEY`) и никогда их не выводят:
 
 | модуль | что делает |
 |---|---|
@@ -59,6 +59,6 @@ python3 clipkit.py scenario.json cover.jpg ~/video/models cover   # cover.jpg 10
 | `nm.card` | айдентика, квадрат, затемнение, бейджи, флаги, синий фон |
 | `nm.photos` | поиск свободных фото и видео (Pixabay, Openverse, Wikimedia, NASA), портреты, скачивание с проверкой |
 | `nm.approve` | превью владельцу и ожидание ответов в Telegram |
-| `nm.publish` | ВК (отложенный пост), Telegram, MAX, последние посты MAX |
+| `nm.publish` | ВК (отложенный пост, с картинкой — через шлюз `server/vkgate.py`, см. `server/README.md`), Telegram, MAX, последние посты MAX |
 
 Справка по командам — в начале каждого файла.

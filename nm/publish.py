@@ -3,7 +3,10 @@
 Текст поста пишется ОДИН раз в файл с хэштегами без суффикса (#Политика).
 Для ВК суффикс @newsobsession добавляется автоматически.
 
-python3 -m nm.publish vk        --text post.txt --at UNIX            # отложенный пост в ВК (214 = уже стоит — ок)
+python3 -m nm.publish vk        --text post.txt --at UNIX [--photo post.jpg]
+    # отложенный пост в ВК (214 = уже стоит — ок). С --photo и NM_GATE_URL/NM_GATE_KEY пост с картинкой
+    # ставит шлюз на сервере (server/vkgate.py); если шлюз недоступен — только текст через VK_TOKEN,
+    # в ответе "photo": false и "gate_error".
 python3 -m nm.publish tg-photo  --to channel|owner --photo P --text post.txt
 python3 -m nm.publish tg-msg    --to owner --text "строка"  |  --text-file F
 python3 -m nm.publish tg-video  --to channel|owner --video V --text F [--thumb T]
@@ -13,7 +16,7 @@ python3 -m nm.publish max-video --video V --text post.txt
 python3 -m nm.publish max-recent [--count 50] [--days 3]             # первые строки постов MAX за N дней
 python3 -m nm.publish check                                          # каких ключей не хватает
 """
-import argparse, json, os, re, time, datetime
+import argparse, base64, json, os, re, time, datetime
 from nm.common import cfg, http, multipart, out, die, need, read_text, now, tz, scrub
 
 C = cfg()
@@ -40,12 +43,30 @@ def vk_text(text):
     return re.sub(r"#(\w+)(?![\w@])", lambda m: f"#{m.group(1)}{suf}", text)
 
 
-def vk(text, at):
+def vk_gate(text, at, photo):
+    """Пост с картинкой через шлюз на сервере. Возвращает ответ или None с причиной."""
+    url, key = os.environ.get("NM_GATE_URL"), os.environ.get("NM_GATE_KEY")
+    if not (url and key): return None, "нет NM_GATE_URL/NM_GATE_KEY"
+    with open(photo, "rb") as f:
+        body = json.dumps({"text": vk_text(text), "at": at, "photo_b64": base64.b64encode(f.read()).decode()}).encode()
+    for attempt in range(2):
+        r = http(url.rstrip("/") + "/vk/post", data=body, method="POST", timeout=180,
+                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"})
+        if r.get("ok"): return r, None
+        if attempt == 0: time.sleep(3)
+    return None, r.get("error") or str(r)[:200]
+
+
+def vk(text, at, photo=None):
+    gate_error = None
+    if photo:
+        r, gate_error = vk_gate(text, at, photo)
+        if r: return r
     p = {"owner_id": -C["vk"]["group_id"], "from_group": 1, "message": vk_text(text), "publish_date": at,
          "access_token": need("VK_TOKEN"), "v": C["vk"]["api_version"]}
     for attempt in range(2):
         r = http("https://api.vk.com/method/wall.post", data=p)
-        if "response" in r: return {"ok": True, "post_id": r["response"]["post_id"]}
+        if "response" in r: return {"ok": True, "post_id": r["response"]["post_id"], "photo": False, "gate_error": gate_error}
         e = r.get("error", {})
         if e.get("error_code") == 214: return {"ok": True, "already": True, "note": "на это время пост в ВК уже стоит — не дублирую"}
         if attempt == 0: time.sleep(3)
@@ -99,12 +120,13 @@ def max_recent(count=50, days=3):
 
 def check():
     miss = [v for v in ("VK_TOKEN", "TG_TOKEN", "MAX_TOKEN") if not os.environ.get(v)]
-    return {"ok": not miss, "missing": miss, "pixabay": bool(os.environ.get("PIXABAY_KEY"))}
+    gate = bool(os.environ.get("NM_GATE_URL") and os.environ.get("NM_GATE_KEY"))
+    return {"ok": not miss, "missing": miss, "pixabay": bool(os.environ.get("PIXABAY_KEY")), "vk_gate": gate}
 
 
 def main():
     ap = argparse.ArgumentParser(); sp = ap.add_subparsers(dest="cmd", required=True)
-    a = sp.add_parser("vk"); a.add_argument("--text", required=True); a.add_argument("--at", type=int, required=True)
+    a = sp.add_parser("vk"); a.add_argument("--text", required=True); a.add_argument("--at", type=int, required=True); a.add_argument("--photo")
     a = sp.add_parser("tg-photo"); a.add_argument("--to", required=True); a.add_argument("--photo", required=True); a.add_argument("--text", required=True)
     a = sp.add_parser("tg-msg"); a.add_argument("--to", default="owner"); a.add_argument("--text"); a.add_argument("--text-file")
     a = sp.add_parser("tg-video"); a.add_argument("--to", required=True); a.add_argument("--video", required=True)
@@ -115,7 +137,7 @@ def main():
     a = sp.add_parser("max-recent"); a.add_argument("--count", type=int, default=50); a.add_argument("--days", type=int, default=3)
     sp.add_parser("check")
     g = ap.parse_args()
-    if g.cmd == "vk": out(vk(read_text(g.text), g.at))
+    if g.cmd == "vk": out(vk(read_text(g.text), g.at, g.photo))
     elif g.cmd == "tg-photo":
         r = tg("sendPhoto", {"chat_id": chat(g.to), "caption": read_text(g.text)}, {"photo": g.photo})
         out({"ok": True, "message_id": r["result"]["message_id"]})
