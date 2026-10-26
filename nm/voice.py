@@ -10,7 +10,7 @@ python3 -m nm.voice voices                                               # го�
 Паузы сжимаются (ffmpeg), при «э»/«эм» (Whisper) — до 3 попыток с другим seed.
 Нет ключа/голоса или ошибка API — {"ok": false, …}; тогда clipkit озвучит офлайн-голосом (поле "voiceover" не ставим).
 """
-import argparse, json, os, re
+import argparse, json, os, re, time
 from nm.common import cfg, http, out, die, need
 
 API = "https://api.elevenlabs.io/v1"
@@ -39,16 +39,24 @@ def voice_id():
 FILLER = re.compile(r"^(э+|эм+|ээ+м*|м+|а+|хм+)$")
 
 
+def call(url, body, minsize):
+    """POST в ElevenLabs; при 429 (занято/лимит параллельных) — до 3 повторов через 20 с."""
+    for k in range(4):
+        audio = http(url, data=body, timeout=300, raw=True,
+                     headers={"xi-api-key": need("ELEVENLABS_API_KEY"), "Content-Type": "application/json", "Accept": "audio/mpeg"})
+        if len(audio) >= minsize and audio[:1] != b"{":
+            return audio
+        if b"rate_limit" not in audio[:400] and b"system_busy" not in audio[:400] or k == 3:
+            die(f"ElevenLabs не вернул звук: {audio[:300].decode('utf-8', 'replace')}")
+        time.sleep(20)
+
+
 def tts(text, seed):
     o = cfg().get("video_of_day", {})
     body = json.dumps({"text": text, "model_id": o.get("eleven_model", "eleven_multilingual_v2"), "seed": seed,
                        "apply_text_normalization": "on",
                        "voice_settings": {"stability": 0.75, "similarity_boost": 0.75, "style": 0.0, "use_speaker_boost": True}}).encode()
-    audio = http(f"{API}/text-to-speech/{voice_id()}?output_format=mp3_44100_128", data=body, timeout=180, raw=True,
-                 headers={"xi-api-key": need("ELEVENLABS_API_KEY"), "Content-Type": "application/json", "Accept": "audio/mpeg"})
-    if len(audio) < 5000 or audio[:1] == b"{":
-        die(f"ElevenLabs не вернул звук: {audio[:300].decode('utf-8', 'replace')}")
-    return audio
+    return call(f"{API}/text-to-speech/{voice_id()}?output_format=mp3_44100_128", body, 5000)
 
 
 def tighten(src, dst):
@@ -99,10 +107,7 @@ def music(scn, prompt, seconds, dst="music.mp3"):
     body = json.dumps({"prompt": prompt + ". Instrumental background music for a short news video, no vocals, steady, not distracting.",
                        "music_length_ms": int(max(10, min(120, seconds)) * 1000), "model_id": "music_v1",
                        "force_instrumental": True}).encode()
-    audio = http(f"{API}/music?output_format=mp3_44100_128", data=body, timeout=300, raw=True,
-                 headers={"xi-api-key": need("ELEVENLABS_API_KEY"), "Content-Type": "application/json", "Accept": "audio/mpeg"})
-    if len(audio) < 20000 or audio[:1] == b"{":
-        die(f"ElevenLabs Music не вернул звук: {audio[:300].decode('utf-8', 'replace')}")
+    audio = call(f"{API}/music?output_format=mp3_44100_128", body, 20000)
     S = json.load(open(scn, encoding="utf-8"))
     base = os.path.dirname(os.path.abspath(scn))
     dst = os.path.join(base, dst)
