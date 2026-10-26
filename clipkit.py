@@ -469,14 +469,9 @@ class Clip:
         return fr.convert("RGB")
 
     # ---------------- звук ----------------
-    def audio(self, path):
-        n = int(self.total * SR); tt = np.arange(n) / SR
-        vo = np.zeros(n)
-        tracks = [(self.vo["wav"], .45)] if isinstance(self.vo, dict) else [(v["wav"], self.starts[i]) for i, v in enumerate(self.vo)]
-        for path_, st in tracks:
-            with wave.open(path_) as w: a = np.frombuffer(w.readframes(w.getnframes()), np.int16) / 32767
-            j = int(st * SR); vo[j:j + len(a)] += a[:n - j]
-        mus = np.zeros(n); note = lambda m: 440 * 2 ** ((m - 69) / 12)
+    def synth(self, n, tt, note):
+        """Своя фоновая музыка (аккорды + бит), если трек не задан."""
+        mus = np.zeros(n)
         rnd = random.Random(len(self.sc))
         prog_ = rnd.choice([[[45, 52, 57, 60, 64], [41, 48, 53, 57, 60], [43, 50, 55, 59, 62], [40, 47, 52, 56, 59]],
                             [[50, 57, 62, 65, 69], [46, 53, 58, 62, 65], [48, 55, 60, 64, 67], [45, 52, 57, 61, 64]],
@@ -495,6 +490,27 @@ class Clip:
             if j >= n: break
             L = min(int(.35 * SR), n - j); x = np.arange(L) / SR; f = 55 * np.exp(-x * 9) + 42
             mus[j:j + L] += .35 * np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-x * 7)
+        return mus
+
+    def audio(self, path):
+        n = int(self.total * SR); tt = np.arange(n) / SR
+        vo = np.zeros(n)
+        tracks = [(self.vo["wav"], .45)] if isinstance(self.vo, dict) else [(v["wav"], self.starts[i]) for i, v in enumerate(self.vo)]
+        for path_, st in tracks:
+            with wave.open(path_) as w: a = np.frombuffer(w.readframes(w.getnframes()), np.int16) / 32767
+            j = int(st * SR); vo[j:j + len(a)] += a[:n - j]
+        mus = np.zeros(n); note = lambda m: 440 * 2 ** ((m - 69) / 12)
+        if getattr(self, "music", None):
+            # готовый трек (например, с Pixabay): с music_start, по кругу, громкость по среднему уровню
+            raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-ss", str(self.music_start), "-i", self.music, "-ac", "1", "-ar", str(SR),
+                                  "-f", "f32le", "-"], capture_output=True, check=True).stdout
+            m = np.frombuffer(raw, np.float32).astype(np.float64)
+            if len(m) < SR: raise SystemExit(f"музыка слишком короткая: {self.music}")
+            m = np.tile(m, n // len(m) + 1)[:n]
+            m *= .13 / (np.sqrt(np.mean(m ** 2)) + 1e-9)
+            mus = m * np.clip(tt / 1.2, 0, 1)
+        else:
+            mus = self.synth(n, tt, note)
         env = np.convolve(np.abs(vo), np.ones(4800) / 4800, "same")
         duck = np.convolve(1 - .55 * np.clip(env * 18, 0, 1), np.ones(9600) / 9600, "same")
         sfx = np.zeros(n)
@@ -713,6 +729,10 @@ def build(scn_path, out, preview=None):
         vo = voice(scenes, work)
     json.dump(vo, open(f"{work}/voice.json", "w"), ensure_ascii=False)
     c = Clip(scenes, vo, imgs); badge = S.get("badge", "ВИДЕО ДНЯ")
+    c.music = None
+    if S.get("music"):
+        c.music = S["music"] if os.path.isabs(S["music"]) else os.path.join(base, S["music"])
+        c.music_start = S.get("music_start", 0)
     c.vids = {}
     for i, s in enumerate(scenes):
         if s.get("video"):
