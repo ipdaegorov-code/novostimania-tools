@@ -4,7 +4,7 @@
 
 ## 1. Подготовка
 - `python3 -m nm.publish check` — если `missing` не пуст, SendUserMessage владельцу и закончи.
-- `python3 -m nm.publish max-recent --days 2` — если сегодня уже есть пост с `has_video: true` (видео дня вышло) — закончи.
+- `python3 -m nm.publish max-recent --days 2` — если есть пост с `today: true` и `has_video: true` (видео дня вышло) — закончи.
 - Движок НЕ ставь до выбора темы (сначала темы — вдруг владелец откажется от видео).
 
 ## 2. Тема
