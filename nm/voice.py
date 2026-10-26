@@ -46,7 +46,7 @@ def voice_id():
     return v
 
 
-FILLER = re.compile(r"^(э+|эм+|ээ+м*|м+|а+|хм+)$")
+FILLER = re.compile(r"^(э+|эм+|ээ+м*|мм+|хм+)$")
 
 
 def call(url, body, minsize):
@@ -79,15 +79,18 @@ def tighten(src, dst):
 
 
 def fillers(path):
-    """Слова-паразиты («э», «эм»…) по распознаванию Whisper; None — если Whisper не установлен."""
+    """Слова-паразиты («э», «эм»…) по распознаванию Whisper; None — если Whisper не установлен или не сработал."""
     try:
+        import subprocess, numpy as np
         from faster_whisper import WhisperModel
-    except ImportError:
+        a16 = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
+                             capture_output=True, check=True).stdout
+        md = os.path.expanduser("~/video/models")
+        segs, _ = WhisperModel("base", device="cpu", compute_type="int8", download_root=md).transcribe(
+            np.frombuffer(a16, np.float32), language="ru", word_timestamps=True, initial_prompt="Э-э, эм, ну, это самое.")
+        return [w.word.strip() for sg in segs for w in sg.words if FILLER.match(re.sub(r"[^\wё]", "", w.word.lower()))]
+    except Exception:
         return None
-    md = os.path.expanduser("~/video/models")
-    segs, _ = WhisperModel("base", device="cpu", compute_type="int8", download_root=md).transcribe(
-        path, language="ru", word_timestamps=True, initial_prompt="Э-э, эм, ну, это самое.")
-    return [w.word.strip() for sg in segs for w in sg.words if FILLER.match(re.sub(r"[^\wё]", "", w.word.lower()))]
 
 
 def make(scn, dst):
