@@ -75,7 +75,12 @@ def until_ts(v):
 def wait(until, maxs):
     end = min(until, time.time() + maxs)
     while True:
-        msgs = poll_once()
+        try:
+            msgs = poll_once()
+        except Exception:  # сбой сети/таймаут Telegram — подождать и опросить снова, не роняя ожидание
+            time.sleep(10)
+            if time.time() >= end: return {"ok": True, "messages": [], "deadline": time.time() >= until}
+            continue
         if msgs: return {"ok": True, "messages": msgs, "deadline": time.time() >= until}
         if time.time() >= end: return {"ok": True, "messages": [], "deadline": time.time() >= until}
         time.sleep(min(20, max(1, end - time.time())))
