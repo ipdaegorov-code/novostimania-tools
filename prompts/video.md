@@ -4,7 +4,7 @@
 
 ## 1. Подготовка
 - `python3 -m nm.publish check` — если `missing` не пуст, SendUserMessage владельцу и закончи.
-- `python3 -m nm.publish max-recent` — если сегодня уже есть пост с `has_video: true` (видео дня вышло) — закончи.
+- `python3 -m nm.publish max-recent --days 1` — если сегодня уже есть пост с `has_video: true` (видео дня вышло) — закончи.
 - `mkdir -p ~/video/today && bash ~/nt/setup.sh ~/video/models` — в конце должно быть «clipkit setup OK». Код движка не переписывай. Не ставится и не лечится одним повтором — `python3 -m nm.publish tg-msg --text "🎬 Видео дня сегодня не соберу: <причина>"` и закончи.
 
 ## 2. Тема

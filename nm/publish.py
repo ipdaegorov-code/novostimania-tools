@@ -10,7 +10,7 @@ python3 -m nm.publish tg-video  --to channel|owner --video V --text F [--thumb T
 python3 -m nm.publish tg-doc    --to owner --file F --caption "…"
 python3 -m nm.publish max-photo --photo P --text post.txt
 python3 -m nm.publish max-video --video V --text post.txt
-python3 -m nm.publish max-recent [--count 30]                        # первые строки постов MAX за сегодня
+python3 -m nm.publish max-recent [--count 50] [--days 3]             # первые строки постов MAX за N дней
 python3 -m nm.publish check                                          # каких ключей не хватает
 """
 import argparse, json, os, re, time, datetime
@@ -81,18 +81,20 @@ def max_send(text, payload, kind):
     die(f"MAX messages: {r}")
 
 
-def max_recent(count=30):
+def max_recent(count=50, days=3):
     base = C["max"]["base"]
     r = http(f"{base}/messages?chat_id={C['max']['channel_id']}&count={count}", headers=max_hdr())
-    today = now().date(); res = []
+    today = now().date(); since = today - datetime.timedelta(days=days - 1); res = []
     for m in r.get("messages", []):
         ts = m.get("timestamp", 0) / 1000
         d = datetime.datetime.fromtimestamp(ts, tz())
-        if d.date() != today: continue
+        if d.date() < since: continue
         txt = m.get("body", {}).get("text", "") or ""
         att = [a.get("type") for a in m.get("body", {}).get("attachments", []) or []]
-        res.append({"time": d.strftime("%H:%M"), "first_line": txt.split("\n")[0], "has_video": "video" in att})
-    return {"ok": True, "today": sorted(res, key=lambda x: x["time"])}
+        res.append({"_ts": ts, "date": d.strftime("%d.%m"), "time": d.strftime("%H:%M"), "today": d.date() == today, "first_line": txt.split("\n")[0], "has_video": "video" in att})
+    res.sort(key=lambda x: x["_ts"])
+    for x in res: x.pop("_ts")
+    return {"ok": True, "days": days, "posts": res}
 
 
 def check():
@@ -110,7 +112,7 @@ def main():
     a = sp.add_parser("tg-doc"); a.add_argument("--to", default="owner"); a.add_argument("--file", required=True); a.add_argument("--caption", default="")
     a = sp.add_parser("max-photo"); a.add_argument("--photo", required=True); a.add_argument("--text", required=True)
     a = sp.add_parser("max-video"); a.add_argument("--video", required=True); a.add_argument("--text", required=True)
-    a = sp.add_parser("max-recent"); a.add_argument("--count", type=int, default=30)
+    a = sp.add_parser("max-recent"); a.add_argument("--count", type=int, default=50); a.add_argument("--days", type=int, default=3)
     sp.add_parser("check")
     g = ap.parse_args()
     if g.cmd == "vk": out(vk(read_text(g.text), g.at))
@@ -129,7 +131,7 @@ def main():
         r = tg("sendDocument", {"chat_id": chat(g.to), "caption": g.caption}, {"document": g.file}); out({"ok": True})
     elif g.cmd == "max-photo": out(max_send(read_text(g.text), max_upload(g.photo, "image"), "image"))
     elif g.cmd == "max-video": out(max_send(read_text(g.text), max_upload(g.video, "video"), "video"))
-    elif g.cmd == "max-recent": out(max_recent(g.count))
+    elif g.cmd == "max-recent": out(max_recent(g.count, g.days))
     elif g.cmd == "check": out(check())
 
 
