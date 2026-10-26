@@ -35,6 +35,10 @@ python3 clipkit.py scenario.json cover.jpg ~/video/models cover   # cover.jpg 10
 
 Для бота: `python3 -m nm.voice make --scenario scenario.json` озвучивает весь сценарий через ElevenLabs (ключ `ELEVENLABS_API_KEY`, голос `ELEVENLABS_VOICE_ID` или `video_of_day.eleven_voice_id` в `config.json`) и сам ставит `voiceover`. `python3 -m nm.voice voices` — список голосов аккаунта.
 
+## Музыка
+
+Поле `music` — путь к mp3 (трек из `music/`, см. `music/README.md`), `music_start` — с какой секунды. Трек идёт по кругу, громкость выравнивается, под голосом приглушается. Без поля — своя синтезированная музыка.
+
 ## Живое видео и графика поверх
 
 У любой сцены вместо (или вместе с) `image` можно указать `video` — путь к mp4. Ролик обрезается под 9:16, идёт по кругу, лёгкий наезд.
