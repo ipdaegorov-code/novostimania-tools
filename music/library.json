@@ -1,1 +1,7 @@
-[]
+[
+ {"file": "politika.mp3", "mood": ["политика", "мир", "конфликты", "дипломатия", "главное", "серьёзно"], "title": "Серьёзный документальный фон (ElevenLabs Music)", "start": 0},
+ {"file": "ekonomika.mp3", "mood": ["экономика", "деньги", "цены", "бизнес", "рубль"], "title": "Деловой: пианино и мягкий бит (ElevenLabs Music)", "start": 0},
+ {"file": "kosmos_nauka.mp3", "mood": ["космос", "наука", "открытия", "природа", "спокойно"], "title": "Космический эмбиент (ElevenLabs Music)", "start": 0},
+ {"file": "tehnologii.mp3", "mood": ["технологии", "рекорд", "транспорт", "спорт", "бодро"], "title": "Бодрая электроника (ElevenLabs Music)", "start": 0},
+ {"file": "obshchestvo.mp3", "mood": ["общество", "люди", "культура", "здоровье", "лёгкое"], "title": "Тёплая акустика (ElevenLabs Music)", "start": 0}
+]
