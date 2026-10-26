@@ -2,7 +2,7 @@
 
 python3 -m nm.approve start                                  # запомнить момент T (ответы раньше — игнор)
 python3 -m nm.approve preview --photo P --text post.txt --label "🖼 09:00 · Политика — предложение" [--opinion]
-python3 -m nm.approve wait --until UNIX [--max 480]          # ждёт новые сообщения владельца (опрос раз в 20 с)
+python3 -m nm.approve wait --until UNIX|ЧЧ:ММ [--max 480]    # ждёт новые сообщения владельца (опрос раз в 20 с)
 python3 -m nm.approve video-preview --video V --cover C --caption "…"
 
 wait возвращает {"messages":[{"text":…, "photo":путь или null, "date":…}], "deadline": true/false}
@@ -56,6 +56,22 @@ def poll_once():
     return msgs
 
 
+def until_ts(v):
+    """--until: unix-время или ЧЧ:ММ по Москве (ближайшее такое время, не раньше чем 12 ч назад)."""
+    import argparse, datetime
+    from nm.common import now
+    if v.isdigit():
+        return int(v)
+    try:
+        h, m = map(int, v.split(":"))
+        t = now().replace(hour=h, minute=m, second=0, microsecond=0)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"--until: нужно unix-время или ЧЧ:ММ, а не {v!r}")
+    if (now() - t).total_seconds() > 12 * 3600:
+        t += datetime.timedelta(days=1)
+    return int(t.timestamp())
+
+
 def wait(until, maxs):
     end = min(until, time.time() + maxs)
     while True:
@@ -70,7 +86,7 @@ def main():
     sp.add_parser("start")
     a = sp.add_parser("preview"); a.add_argument("--photo", required=True); a.add_argument("--text", required=True)
     a.add_argument("--label", required=True); a.add_argument("--opinion", action="store_true")
-    a = sp.add_parser("wait"); a.add_argument("--until", type=int, required=True); a.add_argument("--max", type=int, default=480)
+    a = sp.add_parser("wait"); a.add_argument("--until", type=until_ts, required=True); a.add_argument("--max", type=int, default=480)
     a = sp.add_parser("video-preview"); a.add_argument("--video", required=True); a.add_argument("--cover", required=True); a.add_argument("--caption", required=True)
     g = ap.parse_args()
     if g.cmd == "start": out({"ok": True, "T": start()})
