@@ -55,18 +55,27 @@ def save(path, obj):
     os.replace(tmp, path)
 
 
-def post(url, data=None, body=None, headers=None, timeout=60):
+def post(url, data=None, body=None, headers=None, timeout=60, tries=3):
+    """POST с повторами при сетевых сбоях (ВК из-за рубежа иногда зависает на TLS).
+    tries=1 — для одноразовых запросов (код входа, ключ обновления): повтор может их сжечь."""
     h = {"User-Agent": "NovostimaniyaGate/1.0"}
     h.update(headers or {})
     if data is not None:
         body = urllib.parse.urlencode(data).encode()
         h["Content-Type"] = "application/x-www-form-urlencoded"
-    req = urllib.request.Request(url, data=body, headers=h, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            raw = r.read()
-    except urllib.error.HTTPError as e:
-        raw = e.read()
+    for i in range(tries):
+        req = urllib.request.Request(url, data=body, headers=h, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+            break
+        except urllib.error.HTTPError as e:
+            raw = e.read(); break
+        except (urllib.error.URLError, OSError) as e:
+            err = str(getattr(e, "reason", e))
+            if i + 1 < tries: log(f"сеть ({url.split('?')[0]}): {err}, повтор"); time.sleep(5 * (i + 1))
+    else:
+        return {"error": "network", "error_description": err}
     try:
         return json.loads(raw)
     except Exception:
@@ -97,7 +106,9 @@ def login(addr):
     if state != lg["state"]: sys.exit("state не совпадает — получите новую ссылку: login-url")
     r = post("https://id.vk.com/oauth2/auth", {
         "grant_type": "authorization_code", "code_verifier": lg["verifier"], "redirect_uri": REDIRECT,
-        "code": code, "client_id": APP_ID, "device_id": device, "state": state})
+        "code": code, "client_id": APP_ID, "device_id": device, "state": state}, tries=1)
+    if r.get("error") == "network":
+        sys.exit(f"нет связи с id.vk.com ({r['error_description']}) — повторите эту же команду (код живёт 10 минут)")
     if "access_token" not in r: sys.exit(f"VK ID отказал: {r.get('error')} {r.get('error_description', '')}")
     store(r, device)
     os.remove(LOGIN_FILE)
@@ -118,7 +129,7 @@ def refresh(force=False):
         if not force and t["expires_at"] - time.time() > 900: return t
         r = post("https://id.vk.com/oauth2/auth", {
             "grant_type": "refresh_token", "refresh_token": t["refresh_token"], "client_id": APP_ID,
-            "device_id": t["device_id"], "state": secrets.token_urlsafe(16)})
+            "device_id": t["device_id"], "state": secrets.token_urlsafe(16)}, tries=1)
         if "access_token" in r:
             store(r, t["device_id"]); log("ключ продлён")
             return load(TOKEN_FILE)
