@@ -7,14 +7,12 @@
   "slots": [
     {"time": "07:00", "rubric": "☀️ Главное к утру", "kind": "digest", "badge": "ГЛАВНОЕ", "hashtag": "#Главное", "photos": "other",
      "topic": "дайджест: 4–5 пунктов о главных новостях вечера и ночи из разных рубрик + «📅 Сегодня ожидается:» 1–3 события"},
-    {"time": "09:00", "rubric": "Политика в России", "kind": "news", "badge": "ПОЛИТИКА", "hashtag": "#Политика", "photos": "politics",
-     "topic": "внутренняя повестка: Кремль, правительство, Госдума, законы, регионы"},
+    {"time": "09:00", "rubric": "Деньги и жизнь", "kind": "news", "badge": "ОБЩЕСТВО", "hashtag": "#Общество", "photos": "other", "topic": "то, что касается каждого: цены, зарплаты, пенсии, ЖКХ, новые законы и правила, транспорт, здоровье"},
     {"time": "11:00", "rubric": "Экономика", "kind": "news", "badge": "ЭКОНОМИКА", "hashtag": "#Экономика", "photos": "other",
      "topic": "что это значит для людей: цены, рубль, ставки, зарплаты, налоги — не биржевые сводки"},
     {"time": "13:00", "rubric": "Россия — США — Украина", "kind": "news", "badge": "ПОЛИТИКА", "hashtag": "#Политика", "photos": "politics",
      "topic": "переговоры, заявления, встречи — отношения этих трёх стран; только сегодняшнее", "opinion": true, "video_links": "leaders"},
-    {"time": "16:00", "rubric": "Мир и конфликты", "kind": "news", "badge": "МИР", "hashtag": "#Мир", "photos": "politics",
-     "topic": "главное международное событие или конфликт, появившееся или заметно развившееся сегодня", "opinion": true, "video_links": "leaders_or_conflict"},
+    {"time": "16:00", "rubric": "Люди и истории", "kind": "news", "badge": "ИСТОРИИ", "hashtag": "#Истории", "photos": "other", "topic": "история про людей, появившаяся сегодня: герои и спасения, необычные случаи, курьёзы, известные люди и бренды; без политики и без шок-подробностей", "opinion": true},
     {"time": "19:00", "rubric": "Наука, технологии, общество", "kind": "news", "badge": "НАУКА", "hashtag": "#Наука", "photos": "other",
      "topic": "что-то интересное и лёгкое; хэштег по сути: #Наука, #Технологии или #Общество"},
     {"time": "21:30", "rubric": "🌙 Итоги дня за минуту", "kind": "summary", "badge": "ГЛАВНОЕ", "hashtag": "#Главное", "photos": "other",
@@ -24,7 +22,7 @@
     "politics": ["media", "pixabay", "official", "openverse", "wikimedia"],
     "other": ["pixabay", "media", "official", "openverse", "wikimedia", "nasa"]
   },
-  "post_length": [550, 950],
+  "post_length": {"news": [400, 650], "digest": [550, 950]},
   "video_of_day": {"time": "21:40", "approve_minutes": 20, "topic_minutes": 15, "max_edits": 3,
                    "eleven_voice_id": "jlQjkcJ37IW1SaJHR3fU", "eleven_model": "eleven_v3"}
 }

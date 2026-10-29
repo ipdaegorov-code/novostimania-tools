@@ -1,6 +1,7 @@
 """Картинки поста 1080×1080: айдентика, квадрат без обрезки, бейджи, флаги, карточка.
 
 python3 -m nm.card make   --photo P --out O --title T --subtitle S [--badge B] [--date D] [--credit C]
+python3 -m nm.card make   --style big --photo P --out O --title T   # заголовок капсом внизу + логотип (основной стиль)
 python3 -m nm.card square --src P --out O                   # квадрат расширением (размытый фон)
 python3 -m nm.card crop   --src P --out O                   # квадрат обрезкой центра
 python3 -m nm.card dim    --src P --out O [--k 0.8]         # затемнить верхние 2/3 (фон карточки)
@@ -99,12 +100,52 @@ def make_big(photo_path, out_path, title, size=1080):
     for i, s in enumerate(lines):
         d.text((60 * S, y0 + i * lh), s, font=f, fill=WHITE, anchor="ls")
     d.rectangle([60 * S, y0 - lh + 2 * S - 22 * S, 190 * S, y0 - lh - 12 * S], fill=RED)
-    cx, cy, r = 70 * S, 70 * S, 24 * S; d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=GLOBE)
-    d.ellipse([cx - r, cy - r * 0.38, cx + r, cy + r * 0.38], outline=GRID, width=2 * S)
-    d.ellipse([cx - r * 0.38, cy - r, cx + r * 0.38, cy + r], outline=GRID, width=2 * S)
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=WHITE, width=3 * S)
     ov = ov.resize((size, size), Image.LANCZOS)
-    Image.alpha_composite(base.convert("RGBA"), ov).convert("RGB").save(out_path, quality=92)
+    out_im = Image.alpha_composite(base.convert("RGBA"), ov); out_im.alpha_composite(logo(), (40, 36))
+    out_im.convert("RGB").save(out_path, quality=92)
+
+
+ORBIT = "ПОЛИТИКА • ЭКОНОМИКА • МИР • НАУКА • ОБЩЕСТВО • "
+
+
+def logo(h=110):
+    """Логотип: глобус с континентами, по орбите летят слова рубрик, справа «НОВОСТИМАНИЯ»."""
+    import math
+    S = 6; H = h * S; R = H * 0.30; cx = cy = H / 2
+    f_word = ImageFont.truetype(FB, int(H * 0.29)); tw_ = f_word.getlength("НОВОСТИМАНИЯ") + 5 * S * 11
+    im = Image.new("RGBA", (int(H + tw_ + H * 0.2), H), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    sh = Image.new("RGBA", im.size, (0, 0, 0, 0)); ImageDraw.Draw(sh).ellipse([cx - R, cy - R + S * 3, cx + R, cy + R + S * 3], fill=(0, 0, 0, 110))
+    im.alpha_composite(sh.filter(ImageFilter.GaussianBlur(S * 4)))
+    d.ellipse([cx - R, cy - R, cx + R, cy + R], fill=GLOBE)
+    land = (47, 112, 220)
+    d.chord([cx - R * 0.75, cy - R * 0.75, cx + R * 0.05, cy + R * 0.05], 160, 340, fill=land)
+    d.chord([cx - R * 0.05, cy - R * 0.1, cx + R * 0.7, cy + R * 0.8], 300, 120, fill=land)
+    w = max(1, int(S * 1.5))
+    d.ellipse([cx - R, cy - R * 0.38, cx + R, cy + R * 0.38], outline=GRID, width=w)
+    d.ellipse([cx - R * 0.42, cy - R, cx + R * 0.42, cy + R], outline=GRID, width=w)
+    d.line([(cx, cy - R), (cx, cy + R)], fill=GRID, width=w)
+    d.ellipse([cx - R, cy - R, cx + R, cy + R], outline=WHITE, width=int(S * 2.2))
+    # слова на орбите: наклонённый эллипс, передняя половина поверх глобуса, задняя бледнее
+    a, b, tilt = H * 0.47, H * 0.17, math.radians(-18); fo = ImageFont.truetype(FB, int(H * 0.095))
+    pts, t, t0 = [], math.pi * 0.95, math.pi * 0.95
+    for ch in ORBIT * 2:
+        x, y = a * math.cos(t), b * math.sin(t)
+        X = cx + x * math.cos(tilt) - y * math.sin(tilt); Y = cy + x * math.sin(tilt) + y * math.cos(tilt)
+        dx, dy = a * math.sin(t), -b * math.cos(t); ang = math.degrees(math.atan2(dy * math.cos(tilt) + dx * math.sin(tilt), dx * math.cos(tilt) - dy * math.sin(tilt)))
+        front = math.sin(t) > -0.15
+        g = Image.new("RGBA", (int(H * 0.14),) * 2, (0, 0, 0, 0))
+        ImageDraw.Draw(g).text((g.width / 2, g.height / 2), ch, font=fo, fill=(YEL if front else PALE) + (255 if front else 150,), anchor="mm")
+        g = g.rotate(-ang, resample=Image.BICUBIC); pts.append((front, g, X, Y))
+        t -= (fo.getlength(ch) + S * 1.2) / math.hypot(dx, dy)
+        if t < t0 - 2 * math.pi + 0.05: break
+    for front, g, X, Y in sorted(pts, key=lambda p: p[0]):
+        im.alpha_composite(g, (int(X - g.width / 2), int(Y - g.height / 2)))
+    x = H * 1.02; y = cy + H * 0.1
+    for c in "НОВОСТИМАНИЯ":
+        d.text((x + S * 2, y + S * 2), c, font=f_word, fill=(0, 0, 0, 120), anchor="ls")
+        d.text((x, y), c, font=f_word, fill=WHITE, anchor="ls"); x += f_word.getlength(c) + 5 * S
+    im = im.crop((0, 0, int(x + S * 4), H))
+    return im.resize((im.width // S, h), Image.LANCZOS)
 
 
 def square_fit(src, dst, size=1080):
@@ -226,7 +267,7 @@ def main():
     ap = argparse.ArgumentParser(); sp = ap.add_subparsers(dest="cmd", required=True)
     a = sp.add_parser("make"); a.add_argument("--photo", required=True); a.add_argument("--out", required=True)
     a.add_argument("--title", required=True); a.add_argument("--subtitle", default=""); a.add_argument("--badge", default="ПОЛИТИКА")
-    a.add_argument("--date", default=""); a.add_argument("--credit", default="")
+    a.add_argument("--date", default=""); a.add_argument("--credit", default=""); a.add_argument("--style", default="classic", choices=["classic", "big"])
     for n in ("square", "crop"):
         a = sp.add_parser(n); a.add_argument("--src", required=True); a.add_argument("--out", required=True)
     a = sp.add_parser("dim"); a.add_argument("--src", required=True); a.add_argument("--out", required=True)
@@ -239,7 +280,9 @@ def main():
         a.add_argument("--countries", nargs="+", required=True); a.add_argument("--pos", default="center")
     a = sp.add_parser("navy"); a.add_argument("--out", required=True)
     g = ap.parse_args()
-    if g.cmd == "make":
+    if g.cmd == "make" and g.style == "big":
+        make_big(g.photo, g.out, g.title)
+    elif g.cmd == "make":
         if not g.date:
             from nm.common import now; g.date = now().strftime("%d.%m.%Y")
         make(g.photo, g.out, g.title, g.subtitle, g.badge, g.date, credit=g.credit)
