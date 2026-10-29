@@ -101,51 +101,91 @@ def make_big(photo_path, out_path, title, size=1080):
         d.text((60 * S, y0 + i * lh), s, font=f, fill=WHITE, anchor="ls")
     d.rectangle([60 * S, y0 - lh + 2 * S - 22 * S, 190 * S, y0 - lh - 12 * S], fill=RED)
     ov = ov.resize((size, size), Image.LANCZOS)
-    out_im = Image.alpha_composite(base.convert("RGBA"), ov); out_im.alpha_composite(logo(), (40, 36))
+    out_im = Image.alpha_composite(base.convert("RGBA"), ov); out_im.alpha_composite(logo(), (20, 14))
     out_im.convert("RGB").save(out_path, quality=92)
 
 
-ORBIT = "ПОЛИТИКА • ЭКОНОМИКА • МИР • НАУКА • ОБЩЕСТВО • "
+def _pill(text, f, fill, fg, outline=None, dot=None, pad=0.55):
+    h = f.size * 1.9; w = f.getlength(text) + h * pad * 2 + (h * 0.55 if dot else 0)
+    im = Image.new("RGBA", (int(w) + 4, int(h) + 4), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    d.rounded_rectangle([2, 2, w, h], radius=h / 2, fill=fill, outline=outline, width=max(1, int(f.size * 0.08)))
+    x = 2 + h * pad
+    if dot:
+        r = h * 0.16; d.ellipse([x, 2 + h / 2 - r, x + 2 * r, 2 + h / 2 + r], fill=dot); x += h * 0.55
+    d.text((x, 2 + h / 2), text, font=f, fill=fg, anchor="lm")
+    return im
 
 
-def logo(h=110):
-    """Логотип: глобус с континентами, по орбите летят слова рубрик, справа «НОВОСТИМАНИЯ»."""
+def logo_icon(size=600):
+    """Глобус из промо: сфера с сеткой и материками, три орбиты, плашки рубрик, LIVE и 24/7."""
     import math
-    S = 6; H = h * S; R = H * 0.30; cx = cy = H / 2
-    f_word = ImageFont.truetype(FB, int(H * 0.29)); tw_ = f_word.getlength("НОВОСТИМАНИЯ") + 5 * S * 11
-    im = Image.new("RGBA", (int(H + tw_ + H * 0.2), H), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
-    sh = Image.new("RGBA", im.size, (0, 0, 0, 0)); ImageDraw.Draw(sh).ellipse([cx - R, cy - R + S * 3, cx + R, cy + R + S * 3], fill=(0, 0, 0, 110))
-    im.alpha_composite(sh.filter(ImageFilter.GaussianBlur(S * 4)))
-    d.ellipse([cx - R, cy - R, cx + R, cy + R], fill=GLOBE)
-    land = (47, 112, 220)
-    d.chord([cx - R * 0.75, cy - R * 0.75, cx + R * 0.05, cy + R * 0.05], 160, 340, fill=land)
-    d.chord([cx - R * 0.05, cy - R * 0.1, cx + R * 0.7, cy + R * 0.8], 300, 120, fill=land)
-    w = max(1, int(S * 1.5))
-    d.ellipse([cx - R, cy - R * 0.38, cx + R, cy + R * 0.38], outline=GRID, width=w)
-    d.ellipse([cx - R * 0.42, cy - R, cx + R * 0.42, cy + R], outline=GRID, width=w)
-    d.line([(cx, cy - R), (cx, cy + R)], fill=GRID, width=w)
-    d.ellipse([cx - R, cy - R, cx + R, cy + R], outline=WHITE, width=int(S * 2.2))
-    # слова на орбите: наклонённый эллипс, передняя половина поверх глобуса, задняя бледнее
-    a, b, tilt = H * 0.47, H * 0.17, math.radians(-18); fo = ImageFont.truetype(FB, int(H * 0.095))
-    pts, t, t0 = [], math.pi * 0.95, math.pi * 0.95
-    for ch in ORBIT * 2:
-        x, y = a * math.cos(t), b * math.sin(t)
-        X = cx + x * math.cos(tilt) - y * math.sin(tilt); Y = cy + x * math.sin(tilt) + y * math.cos(tilt)
-        dx, dy = a * math.sin(t), -b * math.cos(t); ang = math.degrees(math.atan2(dy * math.cos(tilt) + dx * math.sin(tilt), dx * math.cos(tilt) - dy * math.sin(tilt)))
-        front = math.sin(t) > -0.15
-        g = Image.new("RGBA", (int(H * 0.14),) * 2, (0, 0, 0, 0))
-        ImageDraw.Draw(g).text((g.width / 2, g.height / 2), ch, font=fo, fill=(YEL if front else PALE) + (255 if front else 150,), anchor="mm")
-        g = g.rotate(-ang, resample=Image.BICUBIC); pts.append((front, g, X, Y))
-        t -= (fo.getlength(ch) + S * 1.2) / math.hypot(dx, dy)
-        if t < t0 - 2 * math.pi + 0.05: break
-    for front, g, X, Y in sorted(pts, key=lambda p: p[0]):
-        im.alpha_composite(g, (int(X - g.width / 2), int(Y - g.height / 2)))
-    x = H * 1.02; y = cy + H * 0.1
-    for c in "НОВОСТИМАНИЯ":
-        d.text((x + S * 2, y + S * 2), c, font=f_word, fill=(0, 0, 0, 120), anchor="ls")
-        d.text((x, y), c, font=f_word, fill=WHITE, anchor="ls"); x += f_word.getlength(c) + 5 * S
-    im = im.crop((0, 0, int(x + S * 4), H))
-    return im.resize((im.width // S, h), Image.LANCZOS)
+    S = 2; W = size * S; c = W / 2; R = W * 0.27
+    im = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+    ORB = (120, 160, 235, 200); lw = max(2, int(W * 0.004))
+
+    def orbit(rx, ry, ang, front):
+        o = Image.new("RGBA", (W, W), (0, 0, 0, 0)); d = ImageDraw.Draw(o)
+        d.ellipse([c - rx, c - ry, c + rx, c + ry], outline=ORB, width=lw)
+        o = o.rotate(ang, resample=Image.BICUBIC, center=(c, c))
+        if not front:  # задняя часть орбиты прячется за глобусом
+            m = Image.new("L", (W, W), 255); ImageDraw.Draw(m).ellipse([c - R, c - R, c + R, c + R], fill=0)
+            o.putalpha(Image.composite(o.getchannel("A"), Image.new("L", (W, W), 0), m))
+        return o
+    orbits = [(W * 0.47, W * 0.13, 0), (W * 0.15, W * 0.47, 28), (W * 0.15, W * 0.47, -28)]
+    for rx, ry, ang in orbits:
+        im.alpha_composite(orbit(rx, ry, ang, False))
+    # сфера
+    g = Image.new("RGBA", (W, W), (0, 0, 0, 0)); gd = ImageDraw.Draw(g)
+    for i in range(int(R), 0, -2):
+        t = i / R; col = tuple(int(a + (b - a) * (1 - t)) for a, b in zip((22, 70, 170), (70, 140, 240)))
+        ox, oy = (1 - t) * R * 0.25, (1 - t) * R * 0.3
+        gd.ellipse([c - i - ox, c - i - oy, c + i - ox, c + i - oy], fill=col + (255,))
+    mask = Image.new("L", (W, W), 0); ImageDraw.Draw(mask).ellipse([c - R, c - R, c + R, c + R], fill=255)
+    land = Image.new("RGBA", (W, W), (0, 0, 0, 0)); ld = ImageDraw.Draw(land); LC = (90, 150, 245, 200)
+    P = lambda pts: [(c + x * R, c + y * R) for x, y in pts]
+    ld.polygon(P([(-0.75, -0.55), (-0.35, -0.7), (-0.1, -0.45), (-0.3, -0.2), (-0.45, 0.05), (-0.6, -0.05), (-0.85, -0.25)]), fill=LC)
+    ld.polygon(P([(-0.4, 0.1), (-0.15, 0.15), (-0.05, 0.4), (-0.2, 0.75), (-0.35, 0.6), (-0.45, 0.3)]), fill=LC)
+    ld.polygon(P([(0.15, -0.45), (0.5, -0.5), (0.7, -0.25), (0.55, 0.0), (0.6, 0.35), (0.4, 0.6), (0.25, 0.3), (0.2, 0.0), (0.1, -0.2)]), fill=LC)
+    gd = ImageDraw.Draw(land); GL = (150, 190, 255, 140); gw = max(1, int(W * 0.003))
+    for k in (-0.6, -0.3, 0, 0.3, 0.6):
+        yy = c + k * R; hw = R * math.sqrt(1 - k * k); gd.ellipse([c - hw, yy - hw * 0.12, c + hw, yy + hw * 0.12], outline=GL, width=gw)
+    for k in (0.25, 0.6, 0.9):
+        gd.ellipse([c - R * k, c - R, c + R * k, c + R], outline=GL, width=gw)
+    gd.line([(c, c - R), (c, c + R)], fill=GL, width=gw)
+    g.alpha_composite(land); g.putalpha(Image.composite(g.getchannel("A"), Image.new("L", (W, W), 0), mask))
+    glow = Image.new("RGBA", (W, W), (0, 0, 0, 0)); ImageDraw.Draw(glow).ellipse([c - R * 1.08, c - R * 1.08, c + R * 1.08, c + R * 1.08], fill=(80, 140, 255, 90))
+    im.alpha_composite(glow.filter(ImageFilter.GaussianBlur(W * 0.02))); im.alpha_composite(g)
+    d = ImageDraw.Draw(im)
+    for x, y in ((0.15, -0.55), (-0.55, -0.35), (-0.25, 0.4)):
+        X, Y = c + x * R, c + y * R; r = R * 0.035
+        d.ellipse([X - r, Y - r, X + r, Y + r], fill=YEL); d.ellipse([X - r * 2.3, Y - r * 2.3, X + r * 2.3, Y + r * 2.3], outline=YEL + (200,), width=gw)
+    for rx, ry, ang in orbits:
+        o = orbit(rx, ry, ang, True)
+        m = Image.new("L", (W, W), 0); ImageDraw.Draw(m).rectangle([0, c, W, W], fill=255) if ang == 0 else ImageDraw.Draw(m).ellipse([c - R, c - R, c + R, c + R], fill=0)
+        if ang == 0: o.putalpha(Image.composite(o.getchannel("A"), Image.new("L", (W, W), 0), m))
+        im.alpha_composite(o)
+    fp = ImageFont.truetype(FB, int(W * 0.05)); PILL = (18, 45, 105, 235); PO = (110, 150, 230, 255); TX = (215, 228, 255)
+    for txt, x, y, kw in (("ЭКОНОМИКА", 0.27, 0.06, {}), ("ПОЛИТИКА", 0.47, 0.86, {}),
+                          ("ТЕХНОЛОГИИ", 0.52, 0.5, dict(fg=WHITE)),
+                          ("LIVE", 0.86, 0.43, dict(fill=RED + (255,), fg=WHITE, outline=RED + (255,), dot=(230, 230, 240)))):
+        pl = _pill(txt, fp, kw.get("fill", PILL), kw.get("fg", TX), kw.get("outline", PO), kw.get("dot"))
+        im.alpha_composite(pl, (int(W * x - pl.width / 2), int(W * y - pl.height / 2)))
+    r = W * 0.065; X, Y = W * 0.08, W * 0.6
+    d.ellipse([X - r, Y - r, X + r, Y + r], fill=YEL); d.text((X, Y), "24/7", font=ImageFont.truetype(FB, int(W * 0.042)), fill=NAVY, anchor="mm")
+    return im.resize((size, size), Image.LANCZOS)
+
+
+def logo(h=180):
+    """Логотип для угла карточки: глобус из промо + «НОВОСТИМАНИЯ»."""
+    ic = logo_icon(h * 2).resize((h, h), Image.LANCZOS); S = 4; f = ImageFont.truetype(FB, int(h * 0.2 * S))
+    tw = f.getlength("НОВОСТИМАНИЯ") + 4 * S * 11
+    t = Image.new("RGBA", (int(tw + 8 * S), int(h * 0.32 * S)), (0, 0, 0, 0)); d = ImageDraw.Draw(t); x = 0
+    for ch in "НОВОСТИМАНИЯ":
+        d.text((x + 2 * S, t.height * 0.78 + 2 * S), ch, font=f, fill=(0, 0, 0, 130), anchor="ls")
+        d.text((x, t.height * 0.78), ch, font=f, fill=WHITE, anchor="ls"); x += f.getlength(ch) + 4 * S
+    t = t.resize((t.width // S, t.height // S), Image.LANCZOS)
+    im = Image.new("RGBA", (h + t.width + int(h * 0.06), h), (0, 0, 0, 0)); im.alpha_composite(ic)
+    im.alpha_composite(t, (h + int(h * 0.06), (h - t.height) // 2)); return im
 
 
 def square_fit(src, dst, size=1080):
