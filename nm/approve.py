@@ -41,7 +41,10 @@ def _download(file_id):
 
 
 def poll_once():
-    st = load_state(); T = st.get("T", 0); params = {"timeout": 0}
+    st = load_state(); T = st.get("T", 0)
+    # allowed_updates задаём явно: Telegram запоминает фильтр от прошлых вызовов,
+    # и чужой getUpdates с ["channel_post"] молча глушил ответы владельца.
+    params = {"timeout": 0, "allowed_updates": '["message"]'}
     if "offset" in st: params["offset"] = st["offset"]
     r = api("getUpdates", **params); msgs = []
     for u in r.get("result", []):

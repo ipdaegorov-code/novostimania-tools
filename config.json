@@ -22,6 +22,16 @@
     "politics": ["media", "pixabay", "official", "openverse", "wikimedia"],
     "other": ["pixabay", "media", "official", "openverse", "wikimedia", "nasa"]
   },
+  "feeds": {
+    "tass": "https://tass.ru/rss/v2.xml",
+    "ria": "https://ria.ru/export/rss2/archive/index.xml",
+    "interfax": "https://www.interfax.ru/rss.asp",
+    "rbc": "https://rssexport.rbc.ru/rbcnews/news/30/full.rss",
+    "kommersant": "https://www.kommersant.ru/RSS/news.xml",
+    "lenta": "https://lenta.ru/rss/news",
+    "vedomosti": "https://www.vedomosti.ru/rss/news",
+    "rg": "https://rg.ru/xml/index.xml"
+  },
   "post_length": {"news": [400, 650], "digest": [550, 950]},
   "video_of_day": {"time": "21:40", "approve_minutes": 20, "topic_minutes": 15, "max_edits": 3,
                    "eleven_voice_id": "jlQjkcJ37IW1SaJHR3fU", "eleven_model": "eleven_v3"}

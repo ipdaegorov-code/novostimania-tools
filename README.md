@@ -64,6 +64,7 @@ python3 clipkit.py scenario.json cover.jpg ~/video/models cover   # cover.jpg 10
 | `nm.slot` | текущий слот, время публикации, срок диалога |
 | `nm.card` | айдентика, квадрат, затемнение, бейджи, флаги, синий фон |
 | `nm.photos` | поиск свободных фото и видео (Pixabay, Openverse, Wikimedia, NASA), портреты, скачивание с проверкой |
+| `nm.feeds` | лента российских СМИ из RSS: склейка одной новости от разных изданий, число источников, крупное фото со страницы статьи |
 | `nm.approve` | превью владельцу и ожидание ответов в Telegram |
 | `nm.voice` | озвучка «Видео дня» через ElevenLabs |
 | `nm.publish` | ВК (отложенный пост, с картинкой — через шлюз `server/vkgate.py`, см. `server/README.md`), Telegram, MAX, последние посты MAX |
