@@ -123,17 +123,23 @@ def logo_icon(size=600):
     im = Image.new("RGBA", (W, W), (0, 0, 0, 0))
     ORB = (150, 190, 255, 255); lw = max(3, int(W * 0.013))
 
-    def orbit(rx, ry, ang, front=False):
+    def orbit(rx, ry, ang, side, front):
+        """Половина орбиты: side — какая сторона ближе к зрителю (down/right/left); задняя прячется за шар."""
         o = Image.new("RGBA", (W, W), (0, 0, 0, 0)); d = ImageDraw.Draw(o)
         d.ellipse([c - rx, c - ry, c + rx, c + ry], outline=ORB, width=lw)
+        h = Image.new("L", (W, W), 0); hd = ImageDraw.Draw(h)
+        box = {"down": [0, c, W, W], "right": [c, 0, W, W], "left": [0, 0, c, W]}[side]
+        hd.rectangle(box, fill=255)
+        if not front: h = Image.eval(h, lambda v: 255 - v)
+        o.putalpha(Image.composite(o.getchannel("A"), Image.new("L", (W, W), 0), h))
         o = o.rotate(ang, resample=Image.BICUBIC, center=(c, c))
-        if not front:  # задняя часть орбиты прячется за глобусом
+        if not front:
             m = Image.new("L", (W, W), 255); ImageDraw.Draw(m).ellipse([c - R, c - R, c + R, c + R], fill=0)
             o.putalpha(Image.composite(o.getchannel("A"), Image.new("L", (W, W), 0), m))
         return o
-    orbits = [(W * 0.47, W * 0.13, 0), (W * 0.15, W * 0.47, 28), (W * 0.15, W * 0.47, -28)]
-    for rx, ry, ang in orbits:
-        im.alpha_composite(orbit(rx, ry, ang, False))
+    orbits = [(W * 0.47, W * 0.13, 0, "down"), (W * 0.15, W * 0.47, 28, "right"), (W * 0.15, W * 0.47, -28, "left")]
+    for o in orbits:
+        im.alpha_composite(orbit(*o, front=False))
     # сфера
     g = Image.new("RGBA", (W, W), (0, 0, 0, 0)); gd = ImageDraw.Draw(g)
     for i in range(int(R), 0, -2):
@@ -155,6 +161,8 @@ def logo_icon(size=600):
     g.alpha_composite(land); g.putalpha(Image.composite(g.getchannel("A"), Image.new("L", (W, W), 0), mask))
     glow = Image.new("RGBA", (W, W), (0, 0, 0, 0)); ImageDraw.Draw(glow).ellipse([c - R * 1.08, c - R * 1.08, c + R * 1.08, c + R * 1.08], fill=(80, 140, 255, 90))
     im.alpha_composite(glow.filter(ImageFilter.GaussianBlur(W * 0.02))); im.alpha_composite(g)
+    for o in orbits:
+        im.alpha_composite(orbit(*o, front=True))
     d = ImageDraw.Draw(im)
     for x, y in ((0.15, -0.55), (-0.55, -0.35), (-0.25, 0.4)):
         X, Y = c + x * R, c + y * R; r = R * 0.035
