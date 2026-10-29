@@ -117,13 +117,13 @@ def _pill(text, f, fill, fg, outline=None, dot=None, pad=0.55):
 
 
 def logo_icon(size=600):
-    """Глобус из промо: сфера с сеткой и материками, три орбиты, плашки рубрик, LIVE и 24/7."""
+    """Глобус из промо: сфера с сеткой и материками, три орбиты (уходят за шар), плашки рубрик, LIVE и 24/7."""
     import math
     S = 2; W = size * S; c = W / 2; R = W * 0.27
     im = Image.new("RGBA", (W, W), (0, 0, 0, 0))
     ORB = (150, 190, 255, 255); lw = max(3, int(W * 0.013))
 
-    def orbit(rx, ry, ang, front):
+    def orbit(rx, ry, ang, front=False):
         o = Image.new("RGBA", (W, W), (0, 0, 0, 0)); d = ImageDraw.Draw(o)
         d.ellipse([c - rx, c - ry, c + rx, c + ry], outline=ORB, width=lw)
         o = o.rotate(ang, resample=Image.BICUBIC, center=(c, c))
@@ -159,11 +159,6 @@ def logo_icon(size=600):
     for x, y in ((0.15, -0.55), (-0.55, -0.35), (-0.25, 0.4)):
         X, Y = c + x * R, c + y * R; r = R * 0.035
         d.ellipse([X - r, Y - r, X + r, Y + r], fill=YEL); d.ellipse([X - r * 2.3, Y - r * 2.3, X + r * 2.3, Y + r * 2.3], outline=YEL + (200,), width=gw)
-    for rx, ry, ang in orbits:
-        o = orbit(rx, ry, ang, True)
-        m = Image.new("L", (W, W), 0); ImageDraw.Draw(m).rectangle([0, c, W, W], fill=255) if ang == 0 else ImageDraw.Draw(m).ellipse([c - R, c - R, c + R, c + R], fill=0)
-        if ang == 0: o.putalpha(Image.composite(o.getchannel("A"), Image.new("L", (W, W), 0), m))
-        im.alpha_composite(o)
     fp = ImageFont.truetype(FB, int(W * 0.05)); PILL = (18, 45, 105, 235); PO = (110, 150, 230, 255); TX = (215, 228, 255)
     for txt, x, y, kw in (("ЭКОНОМИКА", 0.27, 0.06, {}), ("ПОЛИТИКА", 0.47, 0.86, {}),
                           ("ТЕХНОЛОГИИ", 0.52, 0.5, dict(fg=WHITE)),
