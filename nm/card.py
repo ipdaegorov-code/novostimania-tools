@@ -82,7 +82,7 @@ def wrap(words, f, width, gap):
     return lines + [cur]
 
 
-def make_big(photo_path, out_path, title, size=1080, corner="blue"):
+def make_big(photo_path, out_path, title, size=1080):
     """Стиль «заголовок»: фото на весь кадр, логотип в углу, крупный заголовок капсом внизу (2–3 строки)."""
     S = 2; base = Image.open(photo_path).convert("RGB"); side = min(base.size)
     l, t = (base.width - side) // 2, (base.height - side) // 2
@@ -101,7 +101,7 @@ def make_big(photo_path, out_path, title, size=1080, corner="blue"):
         d.text((60 * S, y0 + i * lh), s, font=f, fill=WHITE, anchor="ls")
     d.rectangle([60 * S, y0 - lh + 2 * S - 22 * S, 190 * S, y0 - lh - 12 * S], fill=RED)
     ov = ov.resize((size, size), Image.LANCZOS)
-    out_im = Image.alpha_composite(base.convert("RGBA"), corner_glow(size, {"blue": NAVY, "red": (190, 30, 30)}[corner]))
+    out_im = Image.alpha_composite(base.convert("RGBA"), corner_glow(size, NAVY))
     out_im.alpha_composite(ov); out_im.alpha_composite(logo(), (20, 14))
     out_im.convert("RGB").save(out_path, quality=92)
 
