@@ -121,7 +121,7 @@ def logo_icon(size=600):
     import math
     S = 2; W = size * S; c = W / 2; R = W * 0.27
     im = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    ORB = (120, 160, 235, 200); lw = max(2, int(W * 0.004))
+    ORB = (150, 190, 255, 255); lw = max(3, int(W * 0.013))
 
     def orbit(rx, ry, ang, front):
         o = Image.new("RGBA", (W, W), (0, 0, 0, 0)); d = ImageDraw.Draw(o)
