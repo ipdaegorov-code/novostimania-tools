@@ -18,7 +18,7 @@ def main():
     lead = c["approve_lead_minutes"] * 60
     out({"ok": True, "slot": s, "slot_unix": int(t.timestamp()), "approve_until": int(t.timestamp()) - lead,
          "now": n.strftime("%H:%M"), "date": n.strftime("%d.%m.%Y"), "weekday": n.strftime("%A"),
-         "length": c["post_length"], "photo_order": c["photo_order"][s["photos"]]})
+         "length": c["post_length"]["news" if s["kind"] == "news" else "digest"], "photo_order": c["photo_order"][s["photos"]]})
 
 
 if __name__ == "__main__":
