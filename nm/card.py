@@ -70,6 +70,45 @@ def make(photo_path, out_path, title, subtitle, badge="ПОЛИТИКА", date="
     Image.alpha_composite(base.convert("RGBA"), ov).convert("RGB").save(out_path, quality=92)
 
 
+def wrap(words, f, width, gap):
+    lines, cur = [], ""
+    for w in words:
+        t = (cur + " " + w).strip()
+        if cur and sum(f.getlength(c) for c in t) + gap * (len(t) - 1) > width:
+            lines.append(cur); cur = w
+        else:
+            cur = t
+    return lines + [cur]
+
+
+def make_big(photo_path, out_path, title, size=1080, credit=""):
+    """Стиль «заголовок»: фото на весь кадр, логотип в углу, крупный заголовок капсом внизу (2–3 строки)."""
+    S = 2; base = Image.open(photo_path).convert("RGB"); side = min(base.size)
+    l, t = (base.width - side) // 2, (base.height - side) // 2
+    base = base.crop((l, t, l + side, t + side)).resize((size, size), Image.LANCZOS); W = size * S
+    ov = Image.new("RGBA", (W, W), (0, 0, 0, 0)); d = ImageDraw.Draw(ov); F = lambda sz: ImageFont.truetype(FB, int(sz * S))
+    top = W * 0.42
+    for y in range(int(top), W):
+        a = min(1, max(0, (y - top) / (W - top)) ** 0.8 * 1.15); d.line([(0, y), (W, y)], fill=NAVY + (int(235 * a),))
+    words = title.upper().split(); mw = (size - 120) * S; sz = 92
+    while True:
+        f = F(sz); lines = wrap(words, f, mw, 0)
+        if (len(lines) <= 3 and max(f.getlength(x) for x in lines) <= mw) or sz <= 48: break
+        sz -= 2
+    lh = sz * 1.08 * S; y0 = (size - 64) * S - lh * (len(lines) - 1)
+    for i, s in enumerate(lines):
+        d.text((60 * S, y0 + i * lh), s, font=f, fill=WHITE, anchor="ls")
+    d.rectangle([60 * S, y0 - lh + 2 * S - 22 * S, 190 * S, y0 - lh - 12 * S], fill=RED)
+    if credit:
+        d.text((60 * S, (size - 28) * S), credit, font=F(17), fill=(255, 255, 255, 170), anchor="ls")
+    cx, cy, r = 70 * S, 70 * S, 24 * S; d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=GLOBE)
+    d.ellipse([cx - r, cy - r * 0.38, cx + r, cy + r * 0.38], outline=GRID, width=2 * S)
+    d.ellipse([cx - r * 0.38, cy - r, cx + r * 0.38, cy + r], outline=GRID, width=2 * S)
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=WHITE, width=3 * S)
+    ov = ov.resize((size, size), Image.LANCZOS)
+    Image.alpha_composite(base.convert("RGBA"), ov).convert("RGB").save(out_path, quality=92)
+
+
 def square_fit(src, dst, size=1080):
     im = Image.open(src).convert("RGB"); s = max(im.size) / size
     bg = im.resize((int(im.width * size / min(im.size)) + 1, int(im.height * size / min(im.size)) + 1), Image.LANCZOS)
