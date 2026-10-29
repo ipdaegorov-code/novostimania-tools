@@ -105,7 +105,7 @@ def make_big(photo_path, out_path, title, size=1080):
     out_im.convert("RGB").save(out_path, quality=92)
 
 
-def _pill(text, f, fill, fg, outline=None, dot=None, pad=0.55):
+def _pill(text, f, fill=None, fg=WHITE, outline=None, dot=None, pad=0.55):
     h = f.size * 1.9; w = f.getlength(text) + h * pad * 2 + (h * 0.55 if dot else 0)
     im = Image.new("RGBA", (int(w) + 4, int(h) + 4), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
     d.rounded_rectangle([2, 2, w, h], radius=h / 2, fill=fill, outline=outline, width=max(1, int(f.size * 0.08)))
@@ -116,8 +116,9 @@ def _pill(text, f, fill, fg, outline=None, dot=None, pad=0.55):
     return im
 
 
-def logo_icon(size=600):
-    """Глобус из промо: сфера с сеткой и материками, три орбиты (уходят за шар), плашки рубрик, LIVE и 24/7."""
+def logo_icon(size=600, small=False):
+    """Глобус из промо: сфера с сеткой и материками, три орбиты, плашки рубрик, LIVE и 24/7.
+    small=True — для угла карточки: без плашек и 24/7, только крупная красная LIVE."""
     import math
     S = 2; W = size * S; c = W / 2; R = W * 0.27
     im = Image.new("RGBA", (W, W), (0, 0, 0, 0))
@@ -167,10 +168,14 @@ def logo_icon(size=600):
     for x, y in ((0.15, -0.55), (-0.55, -0.35), (-0.25, 0.4)):
         X, Y = c + x * R, c + y * R; r = R * 0.035
         d.ellipse([X - r, Y - r, X + r, Y + r], fill=YEL); d.ellipse([X - r * 2.3, Y - r * 2.3, X + r * 2.3, Y + r * 2.3], outline=YEL + (200,), width=gw)
+    LIVE = dict(fill=RED + (255,), fg=WHITE, outline=RED + (255,), dot=(230, 230, 240))
+    if small:
+        pl = _pill("LIVE", ImageFont.truetype(FB, int(W * 0.1)), **LIVE)
+        im.alpha_composite(pl, (int(W * 0.99 - pl.width), int(W * 0.04)))
+        return im.resize((size, size), Image.LANCZOS)
     fp = ImageFont.truetype(FB, int(W * 0.05)); PILL = (18, 45, 105, 235); PO = (110, 150, 230, 255); TX = (215, 228, 255)
     for txt, x, y, kw in (("ЭКОНОМИКА", 0.27, 0.06, {}), ("ПОЛИТИКА", 0.47, 0.86, {}),
-                          ("ТЕХНОЛОГИИ", 0.52, 0.5, dict(fg=WHITE)),
-                          ("LIVE", 0.86, 0.43, dict(fill=RED + (255,), fg=WHITE, outline=RED + (255,), dot=(230, 230, 240)))):
+                          ("ТЕХНОЛОГИИ", 0.52, 0.5, dict(fg=WHITE)), ("LIVE", 0.86, 0.43, LIVE)):
         pl = _pill(txt, fp, kw.get("fill", PILL), kw.get("fg", TX), kw.get("outline", PO), kw.get("dot"))
         im.alpha_composite(pl, (int(W * x - pl.width / 2), int(W * y - pl.height / 2)))
     r = W * 0.065; X, Y = W * 0.08, W * 0.6
@@ -180,7 +185,7 @@ def logo_icon(size=600):
 
 def logo(h=180):
     """Логотип для угла карточки: глобус из промо + «НОВОСТИМАНИЯ»."""
-    ic = logo_icon(h * 2).resize((h, h), Image.LANCZOS); S = 4; f = ImageFont.truetype(FB, int(h * 0.2 * S))
+    ic = logo_icon(h * 2, small=True).resize((h, h), Image.LANCZOS); S = 4; f = ImageFont.truetype(FB, int(h * 0.2 * S))
     tw = f.getlength("НОВОСТИМАНИЯ") + 4 * S * 11
     t = Image.new("RGBA", (int(tw + 8 * S), int(h * 0.32 * S)), (0, 0, 0, 0)); d = ImageDraw.Draw(t); x = 0
     for ch in "НОВОСТИМАНИЯ":
