@@ -189,7 +189,7 @@ def logo(h=180):
     return logo_icon(h * 2, small=True).resize((h, h), Image.LANCZOS)
 
 
-def corner_glow(size, color, r=440, k=0.92):
+def corner_glow(size, color, r=210, k=0.92):
     """Градиент в левом верхнем углу под логотип."""
     m = Image.new("L", (size, size), 0); d = ImageDraw.Draw(m)
     for i in range(r, 0, -4):
