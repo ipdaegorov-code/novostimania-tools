@@ -64,7 +64,7 @@ def call(url, body, minsize):
 def tts(text, seed):
     o = cfg().get("video_of_day", {})
     model = o.get("eleven_model", "eleven_multilingual_v2")
-    vs = {"stability": 0.5, "similarity_boost": 0.8} if model == "eleven_v3" else \
+    vs = {"stability": 0.5, "similarity_boost": 0.8} if model in ("eleven_v3", "eleven_v4") else \
          {"stability": 0.6, "similarity_boost": 0.8, "style": 0.0, "use_speaker_boost": True}
     body = json.dumps({"text": text, "model_id": model, "seed": seed, "voice_settings": vs}).encode()
     return call(f"{API}/text-to-speech/{voice_id()}?output_format=mp3_44100_128", body, 5000)

@@ -34,5 +34,5 @@
   },
   "post_length": {"news": [400, 650], "digest": [550, 950]},
   "video_of_day": {"time": "21:40", "approve_minutes": 20, "topic_minutes": 15, "max_edits": 3,
-                   "eleven_voice_id": "jlQjkcJ37IW1SaJHR3fU", "eleven_model": "eleven_v3"}
+                   "eleven_voice_id": "jlQjkcJ37IW1SaJHR3fU", "eleven_model": "eleven_v4"}
 }
